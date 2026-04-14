@@ -1,0 +1,62 @@
+"""Claude Code Cost Tracker. Run: flask --app app run --port 5050"""
+from flask import Flask, render_template, request, abort
+from reader import load_all_sessions, build_day_summaries, get_sessions_for_date, get_session_by_id
+
+app = Flask(__name__)
+
+
+def _format_cost(v: float) -> str:
+    if v < 0: return f"-${abs(v):.4f}"
+    if v < 0.001: return "<$0.001"
+    if v < 1.0: return f"${v:.4f}"
+    return f"${v:.2f}"
+
+
+def _format_tokens(n: int) -> str:
+    if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
+    if n >= 1_000: return f"{n/1_000:.1f}K"
+    return str(n)
+
+
+app.jinja_env.globals.update(format_cost=_format_cost, format_tokens=_format_tokens)
+
+
+@app.route("/")
+def day_view():
+    from_date = request.args.get("from", "")
+    to_date = request.args.get("to", "")
+    sessions = load_all_sessions()
+    days = build_day_summaries(sessions, from_date=from_date, to_date=to_date)
+    return render_template("days.html", days=days, from_date=from_date, to_date=to_date,
+                           total_cost=sum(d.total_cost for d in days))
+
+
+@app.route("/day/<date>")
+def day_sessions_view(date):
+    sessions = load_all_sessions()
+    day_sessions = get_sessions_for_date(sessions, date)
+    if not day_sessions:
+        abort(404)
+    return render_template("sessions.html", date=date, sessions=day_sessions,
+                           total_cost=sum(s.total_cost for s in day_sessions))
+
+
+@app.route("/session/<session_id>")
+def session_detail_view(session_id):
+    sessions = load_all_sessions()
+    session = get_session_by_id(sessions, session_id)
+    if not session:
+        abort(404)
+    return render_template("session.html", session=session)
+
+
+@app.route("/session/<session_id>/turn/<turn_uuid>")
+def turn_detail_view(session_id, turn_uuid):
+    sessions = load_all_sessions()
+    session = get_session_by_id(sessions, session_id)
+    if not session:
+        abort(404)
+    turn = next((t for t in session.turns if t.uuid == turn_uuid), None)
+    if not turn:
+        abort(404)
+    return render_template("turn.html", session=session, turn=turn)

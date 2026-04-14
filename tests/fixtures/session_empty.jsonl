@@ -1,0 +1,2 @@
+{"type":"user","message":{"role":"user","content":"hi"},"uuid":"u1","parentUuid":null,"timestamp":"2025-10-01T08:00:00.000Z","sessionId":"sess-empty"}
+{"type":"system","subtype":"info","content":"session init","uuid":"s1","timestamp":"2025-10-01T08:00:00.000Z","sessionId":"sess-empty"}

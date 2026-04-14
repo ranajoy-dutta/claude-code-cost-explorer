@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ session.title }}{% endblock %}
+{% block breadcrumb %}
+  <a href="/">All Days</a> / <a href="/day/{{ session.date }}">{{ session.date }}</a> / {{ session.title }}
+{% endblock %}
+{% block content %}
+<a class="back-link" href="/day/{{ session.date }}">← Back to {{ session.date }}</a>
+<h2>{{ session.title }}</h2>
+<p style="color:#666; margin-bottom:16px; font-size:13px;">{{ session.project_path }} &nbsp;|&nbsp; Session: {{ session.session_id[:8] }}</p>
+<div class="summary-bar">
+  <div class="metric"><span class="metric-label">Total Cost</span><span class="metric-value">{{ format_cost(session.total_cost) }}</span></div>
+  <div class="metric"><span class="metric-label">API Calls</span><span class="metric-value">{{ session.message_count }}</span></div>
+  <div class="metric"><span class="metric-label">Input</span><span class="metric-value">{{ format_tokens(session.total_input_tokens) }}</span></div>
+  <div class="metric"><span class="metric-label">Output</span><span class="metric-value">{{ format_tokens(session.total_output_tokens) }}</span></div>
+  <div class="metric"><span class="metric-label">Cache Write</span><span class="metric-value">{{ format_tokens(session.total_cache_write_tokens) }}</span></div>
+  <div class="metric"><span class="metric-label">Cache Read</span><span class="metric-value">{{ format_tokens(session.total_cache_read_tokens) }}</span></div>
+</div>
+<table>
+  <thead><tr><th>#</th><th>Time</th><th>Model</th><th>User Prompt</th><th>Cost</th><th>Input</th><th>Output</th><th>Cache Write</th><th>Cache Read</th></tr></thead>
+  <tbody>
+    {% for turn in session.turns %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td class="tokens">{{ turn.timestamp[11:19] }}</td>
+      <td><span class="model-tag">{{ turn.model.replace("claude-","") }}</span></td>
+      {% if turn.tool_calls %}
+      <td class="prompt-preview">
+        <a href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}">
+          {% if turn.tool_calls|length == 1 %}
+            [tool: {{ turn.tool_calls[0].name }}]
+          {% else %}
+            [{{ turn.tool_calls|length }} tools: {{ turn.tool_calls|map(attribute='name')|join(', ') }}]
+          {% endif %}
+        </a>
+      </td>
+      {% elif turn.user_prompt %}
+      <td class="prompt-preview">
+        <a href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}" title="{{ turn.user_prompt }}">{{ turn.user_prompt }}</a>
+      </td>
+      {% else %}
+      <td class="prompt-preview">—</td>
+      {% endif %}
+      <td class="cost">{{ format_cost(turn.cost_usd) }}</td>
+      <td class="tokens">{{ format_tokens(turn.usage.get("input_tokens", 0)) }}</td>
+      <td class="tokens">{{ format_tokens(turn.usage.get("output_tokens", 0)) }}</td>
+      <td class="tokens">{{ format_tokens(turn.usage.get("cache_creation_input_tokens", 0)) }}</td>
+      <td class="tokens">{{ format_tokens(turn.usage.get("cache_read_input_tokens", 0)) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Claude Code Costs — Daily Summary{% endblock %}
+{% block content %}
+<h2>Daily Cost Summary</h2>
+<form class="filter-form" method="get" action="/">
+  <label for="from">From</label>
+  <input type="date" id="from" name="from" value="{{ from_date }}">
+  <label for="to">To</label>
+  <input type="date" id="to" name="to" value="{{ to_date }}">
+  <button type="submit">Filter</button>
+  {% if from_date or to_date %}<a class="clear" href="/">Clear</a>{% endif %}
+</form>
+{% if days %}
+<div class="summary-bar">
+  <div class="metric"><span class="metric-label">Total Cost</span><span class="metric-value">{{ format_cost(total_cost) }}</span></div>
+  <div class="metric"><span class="metric-label">Days</span><span class="metric-value">{{ days|length }}</span></div>
+  <div class="metric"><span class="metric-label">Sessions</span><span class="metric-value">{{ days|sum(attribute='session_count') }}</span></div>
+  <div class="metric"><span class="metric-label">API Calls</span><span class="metric-value">{{ days|sum(attribute='message_count') }}</span></div>
+</div>
+<table>
+  <thead><tr><th>Date</th><th>Cost</th><th>Sessions</th><th>API Calls</th><th>Input Tokens</th><th>Output Tokens</th></tr></thead>
+  <tbody>
+    {% for day in days %}
+    <tr>
+      <td><a href="/day/{{ day.date }}">{{ day.date }}</a></td>
+      <td class="cost">{{ format_cost(day.total_cost) }}</td>
+      <td>{{ day.session_count }}</td>
+      <td>{{ day.message_count }}</td>
+      <td class="tokens">{{ format_tokens(day.total_input_tokens) }}</td>
+      <td class="tokens">{{ format_tokens(day.total_output_tokens) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">No data found for the selected date range.</div>
+{% endif %}
+{% endblock %}

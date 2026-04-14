@@ -1,0 +1,4 @@
+{"type":"ai-title","sessionId":"sess-def456","aiTitle":"Investigate deployment pipeline"}
+{"type":"custom-title","sessionId":"sess-def456","customTitle":"Deploy pipeline fix"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"fix deploy"}]},"uuid":"u1","parentUuid":null,"timestamp":"2025-11-01T09:00:00.000Z","sessionId":"sess-def456","cwd":"/Users/test/infra"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-opus-4-6","usage":{"input_tokens":5,"output_tokens":20,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2025-11-01T09:00:05.000Z","sessionId":"sess-def456"}
