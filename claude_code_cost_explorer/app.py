@@ -1,14 +1,16 @@
 """Claude Code Cost Tracker. Run: flask --app app run --port 5050"""
 
 from flask import Flask, render_template, request, abort
-from reader import (
+from claude_code_cost_explorer.reader import (
     load_all_sessions,
     build_day_summaries,
     get_sessions_for_date,
     get_session_by_id,
 )
 
-app = Flask(__name__)
+import pathlib
+
+app = Flask(__name__, template_folder=str(pathlib.Path(__file__).parent / "templates"))
 
 
 def _format_cost(v: float) -> str:
@@ -85,17 +87,19 @@ def turn_detail_view(session_id, turn_uuid):
 def main():
     import webbrowser
     import threading
+    import os
+    import argparse
 
-    port = 5050
-    url = f"http://localhost:{port}"
+    parser = argparse.ArgumentParser(description="Claude Code Cost Explorer")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 5050)))
+    args = parser.parse_args()
 
-    # Auto-open browser after a short delay
+    url = f"http://localhost:{args.port}"
     threading.Timer(1.2, lambda: webbrowser.open(url)).start()
-
     print(f"  Claude Code Cost Explorer running at {url}")
     print("  Press Ctrl+C to quit.")
 
-    app.run(port=port, debug=False)
+    app.run(port=args.port, debug=False)
 
 
 if __name__ == "__main__":

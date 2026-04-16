@@ -3,7 +3,8 @@ name = "claude-code-cost-explorer"
 version = "0.1.0"
 description = "Local web app to explore Claude Code API cost and token usage by day, session, and turn"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 dependencies = [
     "flask>=3.1.1",
@@ -20,5 +21,12 @@ dev = [
 Homepage = "https://github.com/ranajoy-dutta/claude-code-cost-explorer"
 Issues = "https://github.com/ranajoy-dutta/claude-code-cost-explorer/issues"
 
+[project.scripts]
+ccx = "claude_code_cost_explorer.app:main"
+claude-code-cost-explorer = "claude_code_cost_explorer.app:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+"claude_code_cost_explorer" = ["templates/*"]

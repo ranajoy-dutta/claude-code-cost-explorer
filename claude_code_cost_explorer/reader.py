@@ -5,7 +5,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from typing import Optional
-from cost import calculate_cost
+from claude_code_cost_explorer.cost import calculate_cost
 
 CLAUDE_DIR = os.path.expanduser("~/.claude")
 
