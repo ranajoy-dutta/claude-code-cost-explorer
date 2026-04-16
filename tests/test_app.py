@@ -8,6 +8,7 @@ FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 def mock_sessions(monkeypatch):
     from reader import parse_session_file
     import reader
+
     sessions = [
         parse_session_file(os.path.join(FIXTURES, f), "-tmp")
         for f in ["session_simple.jsonl", "session_with_title.jsonl"]
@@ -20,6 +21,7 @@ def mock_sessions(monkeypatch):
 @pytest.fixture()
 def client(mock_sessions):
     import app as flask_app
+
     flask_app.app.config["TESTING"] = True
     with flask_app.app.test_client() as c:
         yield c
