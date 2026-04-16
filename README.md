@@ -1,75 +1,44 @@
 # Claude Code Cost Explorer
 
-> A local web app that reads your [Claude Code](https://claude.ai/code) conversation files in your local machine and shows you API cost and token usage — broken down by day, session, and individual message turn.
+> A local web app to explore Claude Code usage — cost and token breakdown by day, session, and message turn.
 
 No data leaves your machine. No API key needed. Reads directly from `~/.claude/`.
 
 ---
 
-## Screenshots
+## Screenshot
 
 ![App preview](https://raw.githubusercontent.com/ranajoy-dutta/claude-code-cost-explorer/main/docs/screenshots/preview.jpeg)
 
-**Navigation flow:** Day view → click a date → Session list → click a session → Turn-by-turn breakdown
+Drill down: **Day → Session → Turn**
 
-Each turn is a hyperlink:
-- Conversation turns → full user message + full assistant response (with collapsible thinking blocks)
-- Tool call turns → `[tool: Bash]` or `[3 tools: Read, Write, Glob]` → input params + raw output
-
----
-
-## Prerequisites
-
-- **[uv](https://docs.astral.sh/uv/)** — install once, handles everything else:
-  - **macOS / Linux:** `curl -LsSf https://astral.sh/uv/install.sh | sh`
-  - **Windows:** `winget install astral-sh.uv`
-- **[Claude Code](https://claude.ai/code)** installed and used at least once (so `~/.claude/projects/` exists)
+- 💬 Conversation turns → full messages + collapsible thinking
+- 🛠️ Tool calls → `[tool: Bash]`, `[3 tools: Read, Write, Glob]` → inputs + raw output
 
 ---
 
-## Installation
+## Install
 
 ```bash
-git clone https://github.com/ranajoy-dutta/claude-code-cost-explorer.git
-cd claude-code-cost-explorer
-uv sync
+pip install claude-code-cost-explorer
 ```
 
-That's it — `uv sync` creates the virtual environment and installs all dependencies automatically.
-
----
-
-## Running
-
+Run
 ```bash
-uv run flask --app app run --port 5050
+ccx
 ```
 
-Open [http://localhost:5050](http://localhost:5050).
+Open: http://localhost:5050
 
-No venv activation needed — `uv run` handles it automatically.
+## Requirements
+Claude Code installed and used at least once (`~/.claude/projects/` exists)
 
----
+## How it works
 
-## How costs are calculated
+Reads token usage from:
+`~/.claude/projects/**/*.jsonl`
 
-Tokens are read directly from `~/.claude/projects/**/*.jsonl` — Claude Code writes them on every API response. Costs use Claude's published pricing:
-
-| Model | Input | Output | Cache write | Cache read |
-|---|---|---|---|---|
-| claude-opus-4-x | $15/MTok | $75/MTok | $18.75/MTok | $1.50/MTok |
-| claude-sonnet-4-x | $3/MTok | $15/MTok | $3.75/MTok | $0.30/MTok |
-| claude-haiku-4-x | $0.80/MTok | $4/MTok | $1/MTok | $0.08/MTok |
-
-If Anthropic changes pricing or you're on a custom plan, update the `PRICING` table in [`cost.py`](cost.py).
-
----
-
-## Running tests
-
-```bash
-uv run pytest -v
-```
+Uses Claude pricing to compute cost.
 
 ---
 
@@ -87,14 +56,6 @@ If you don't name a session, Claude assigns a random slug (e.g. *jolly-spinning-
 
 ---
 
-## Notes
-
-- **~79% of turns are tool-call responses**, not direct replies to your messages — this is normal. Each `Read`, `Bash`, `Write`, etc. generates its own API call with its own token usage.
-- Cache read tokens are 10× cheaper than input tokens. A session that looks expensive at first glance often has most of its cost in cache reads.
-- Subagent sessions (parallel agents) are excluded from their parent session's cost to avoid double-counting.
-
----
-
 ## Contributing
 
 Bug reports and PRs are welcome! Please:
@@ -105,5 +66,4 @@ Bug reports and PRs are welcome! Please:
 ---
 
 ## License
-
-MIT — see [LICENSE](LICENSE).
+MIT
