@@ -6,15 +6,15 @@ No data leaves your machine. No API key needed. Reads directly from `~/.claude/`
 
 ---
 
-## What it looks like
+## Screenshots
 
-**Day view** → click a date → **Session list** → click a session → **Turn-by-turn breakdown**
+![App preview](docs/screenshots/preview.jpeg)
+
+**Navigation flow:** Day view → click a date → Session list → click a session → Turn-by-turn breakdown
 
 Each turn is a hyperlink:
 - Conversation turns → full user message + full assistant response (with collapsible thinking blocks)
 - Tool call turns → `[tool: Bash]` or `[3 tools: Read, Write, Glob]` → input params + raw output
-
-> 💡 Add a screenshot here once you have one running: `![Screenshot](screenshot.png)`
 
 ---
 
