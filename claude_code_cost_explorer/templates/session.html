@@ -21,7 +21,7 @@
     {% for turn in session.turns %}
     <tr>
       <td>{{ loop.index }}</td>
-      <td class="tokens">{{ turn.timestamp[11:19] }}</td>
+      <td class="tokens"><a href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}">{{ turn.timestamp[:19].replace("T", " ") }}</a></td>
       <td><span class="model-tag">{{ turn.model.replace("claude-","") }}</span></td>
       {% if turn.tool_calls %}
       <td class="prompt-preview">
