@@ -1,8 +1,8 @@
 import os
-import pytest
 from reader import (
-    parse_session_file, build_day_summaries,
-    get_sessions_for_date, get_session_by_id,
+    parse_session_file,
+    build_day_summaries,
+    get_session_by_id,
     _extract_user_prompt,
 )
 
@@ -17,7 +17,10 @@ class TestExtractUserPrompt:
         assert _extract_user_prompt("direct") == "direct"
 
     def test_skips_interrupted(self):
-        assert _extract_user_prompt([{"type": "text", "text": "[Request interrupted]"}]) == ""
+        assert (
+            _extract_user_prompt([{"type": "text", "text": "[Request interrupted]"}])
+            == ""
+        )
 
     def test_truncates_long(self):
         assert len(_extract_user_prompt([{"type": "text", "text": "x" * 200}])) == 120
@@ -34,17 +37,32 @@ class TestParseSessionFile:
 
     def test_cost_correct(self):
         from cost import calculate_cost
+
         s = parse_session_file(os.path.join(FIXTURES, "session_simple.jsonl"), "/tmp")
-        t1 = calculate_cost("claude-sonnet-4-6",
-                             {"input_tokens":10,"output_tokens":50,
-                              "cache_creation_input_tokens":100,"cache_read_input_tokens":0})
-        t2 = calculate_cost("claude-sonnet-4-6",
-                             {"input_tokens":5,"output_tokens":30,
-                              "cache_creation_input_tokens":0,"cache_read_input_tokens":100})
+        t1 = calculate_cost(
+            "claude-sonnet-4-6",
+            {
+                "input_tokens": 10,
+                "output_tokens": 50,
+                "cache_creation_input_tokens": 100,
+                "cache_read_input_tokens": 0,
+            },
+        )
+        t2 = calculate_cost(
+            "claude-sonnet-4-6",
+            {
+                "input_tokens": 5,
+                "output_tokens": 30,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 100,
+            },
+        )
         assert abs(s.total_cost - (t1 + t2)) < 1e-9
 
     def test_cwd_overrides_project_path(self):
-        s = parse_session_file(os.path.join(FIXTURES, "session_simple.jsonl"), "/encoded")
+        s = parse_session_file(
+            os.path.join(FIXTURES, "session_simple.jsonl"), "/encoded"
+        )
         assert s.project_path == "/Users/test/my-project"
         assert s.project_name == "my-project"
 
@@ -53,7 +71,9 @@ class TestParseSessionFile:
         assert s.title == "test-session"
 
     def test_custom_title_priority(self):
-        s = parse_session_file(os.path.join(FIXTURES, "session_with_title.jsonl"), "/tmp")
+        s = parse_session_file(
+            os.path.join(FIXTURES, "session_with_title.jsonl"), "/tmp"
+        )
         assert s.title == "Deploy pipeline fix"
 
     def test_date_from_timestamp(self):
@@ -61,7 +81,10 @@ class TestParseSessionFile:
         assert s.date == "2025-10-25"
 
     def test_empty_session_returns_none(self):
-        assert parse_session_file(os.path.join(FIXTURES, "session_empty.jsonl"), "/tmp") is None
+        assert (
+            parse_session_file(os.path.join(FIXTURES, "session_empty.jsonl"), "/tmp")
+            is None
+        )
 
     def test_nonexistent_file_returns_none(self):
         assert parse_session_file("/tmp/nonexistent-99.jsonl", "/tmp") is None
@@ -76,7 +99,11 @@ class TestBuildDaySummaries:
     def _sessions(self):
         p1 = os.path.join(FIXTURES, "session_simple.jsonl")
         p2 = os.path.join(FIXTURES, "session_with_title.jsonl")
-        return [s for s in [parse_session_file(p1, "/tmp"), parse_session_file(p2, "/tmp")] if s]
+        return [
+            s
+            for s in [parse_session_file(p1, "/tmp"), parse_session_file(p2, "/tmp")]
+            if s
+        ]
 
     def test_sorted_descending(self):
         days = build_day_summaries(self._sessions())

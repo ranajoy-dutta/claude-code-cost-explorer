@@ -1,11 +1,25 @@
 """Cost calculation for Claude API usage based on token counts."""
 
 PRICING = [
-    ("claude-opus-4",   {"input": 15.00, "output": 75.00, "cache_write": 18.75, "cache_read": 1.50}),
-    ("claude-sonnet-4", {"input": 3.00,  "output": 15.00, "cache_write": 3.75,  "cache_read": 0.30}),
-    ("claude-haiku-4",  {"input": 0.80,  "output": 4.00,  "cache_write": 1.00,  "cache_read": 0.08}),
+    (
+        "claude-opus-4",
+        {"input": 15.00, "output": 75.00, "cache_write": 18.75, "cache_read": 1.50},
+    ),
+    (
+        "claude-sonnet-4",
+        {"input": 3.00, "output": 15.00, "cache_write": 3.75, "cache_read": 0.30},
+    ),
+    (
+        "claude-haiku-4",
+        {"input": 0.80, "output": 4.00, "cache_write": 1.00, "cache_read": 0.08},
+    ),
 ]
-DEFAULT_RATES = {"input": 3.00, "output": 15.00, "cache_write": 3.75, "cache_read": 0.30}
+DEFAULT_RATES = {
+    "input": 3.00,
+    "output": 15.00,
+    "cache_write": 3.75,
+    "cache_read": 0.30,
+}
 
 
 def get_rates(model: str) -> dict:

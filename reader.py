@@ -1,4 +1,5 @@
 """Reads and parses ~/.claude/projects JSONL session files."""
+
 from __future__ import annotations
 import json
 import os
@@ -26,8 +27,10 @@ class Turn:
     cost_usd: float
     user_prompt: str = ""
     tool_calls: list = field(default_factory=list)  # list[ToolCallInfo]
-    user_prompt_full: str = ""        # full untruncated user message text
-    assistant_content: list = field(default_factory=list)  # assistant response content blocks
+    user_prompt_full: str = ""  # full untruncated user message text
+    assistant_content: list = field(
+        default_factory=list
+    )  # assistant response content blocks
 
 
 @dataclass
@@ -57,8 +60,6 @@ class DaySummary:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     sessions: list = field(default_factory=list)
-
-
 
 
 def _extract_user_prompt(content) -> str:
@@ -96,7 +97,9 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     if not records:
         return None
 
-    assistant_uuids = {r["uuid"] for r in records if r.get("type") == "assistant" and r.get("uuid")}
+    assistant_uuids = {
+        r["uuid"] for r in records if r.get("type") == "assistant" and r.get("uuid")
+    }
 
     # Title: custom-title > ai-title > slug > fallback
     title = None
@@ -117,7 +120,9 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     for r in records:
         if r.get("cwd"):
             project_path = r["cwd"]
-            project_name = os.path.basename(os.path.normpath(project_path)) or project_path
+            project_name = (
+                os.path.basename(os.path.normpath(project_path)) or project_path
+            )
             break
 
     # Step A: build a map of tool_use_id -> {name, input} from all assistant records
@@ -149,18 +154,29 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
                         result_content = item.get("content") or []
                         name = tool_info.get("name", "")
                         if not name:
-                            for rc in (result_content if isinstance(result_content, list) else []):
-                                if isinstance(rc, dict) and rc.get("type") == "tool_reference":
+                            for rc in (
+                                result_content
+                                if isinstance(result_content, list)
+                                else []
+                            ):
+                                if (
+                                    isinstance(rc, dict)
+                                    and rc.get("type") == "tool_reference"
+                                ):
                                     name = rc.get("tool_name", "tool")
                                     break
                         if not name:
                             name = "tool"
-                        pending_tool_calls.append(ToolCallInfo(
-                            tool_use_id=tool_use_id,
-                            name=name,
-                            input=tool_info.get("input", {}),
-                            result_content=result_content if isinstance(result_content, list) else [],
-                        ))
+                        pending_tool_calls.append(
+                            ToolCallInfo(
+                                tool_use_id=tool_use_id,
+                                name=name,
+                                input=tool_info.get("input", {}),
+                                result_content=result_content
+                                if isinstance(result_content, list)
+                                else [],
+                            )
+                        )
             # Only set last_user_prompt if there's actual text content (not just tool results)
             text = _extract_user_prompt(content)
             if text:
@@ -188,17 +204,19 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
             # Get assistant content blocks (for the root record only)
             asst_content = r.get("message", {}).get("content") or []
             # Step C: attach and clear pending_tool_calls
-            turns.append(Turn(
-                uuid=r.get("uuid", ""),
-                timestamp=r.get("timestamp", ""),
-                model=model,
-                usage=usage,
-                cost_usd=calculate_cost(model, usage),
-                user_prompt=last_user_prompt,
-                user_prompt_full=pending_user_prompt_full,
-                tool_calls=pending_tool_calls,
-                assistant_content=asst_content,
-            ))
+            turns.append(
+                Turn(
+                    uuid=r.get("uuid", ""),
+                    timestamp=r.get("timestamp", ""),
+                    model=model,
+                    usage=usage,
+                    cost_usd=calculate_cost(model, usage),
+                    user_prompt=last_user_prompt,
+                    user_prompt_full=pending_user_prompt_full,
+                    tool_calls=pending_tool_calls,
+                    assistant_content=asst_content,
+                )
+            )
             last_user_prompt = ""
             pending_user_prompt_full = ""
             pending_tool_calls = []
@@ -219,8 +237,12 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
         total_cost=sum(t.cost_usd for t in turns),
         total_input_tokens=sum(t.usage.get("input_tokens", 0) for t in turns),
         total_output_tokens=sum(t.usage.get("output_tokens", 0) for t in turns),
-        total_cache_write_tokens=sum(t.usage.get("cache_creation_input_tokens", 0) for t in turns),
-        total_cache_read_tokens=sum(t.usage.get("cache_read_input_tokens", 0) for t in turns),
+        total_cache_write_tokens=sum(
+            t.usage.get("cache_creation_input_tokens", 0) for t in turns
+        ),
+        total_cache_read_tokens=sum(
+            t.usage.get("cache_read_input_tokens", 0) for t in turns
+        ),
         message_count=len(turns),
         first_timestamp=min(timestamps) if timestamps else "",
         last_timestamp=max(timestamps) if timestamps else "",
@@ -247,7 +269,9 @@ def load_all_sessions(claude_dir: str = CLAUDE_DIR) -> list[SessionData]:
     return sessions
 
 
-def build_day_summaries(sessions: list[SessionData], from_date="", to_date="") -> list[DaySummary]:
+def build_day_summaries(
+    sessions: list[SessionData], from_date="", to_date=""
+) -> list[DaySummary]:
     days: dict[str, DaySummary] = {}
     for s in sessions:
         d = s.date
@@ -266,8 +290,14 @@ def build_day_summaries(sessions: list[SessionData], from_date="", to_date="") -
 
 
 def get_sessions_for_date(sessions: list[SessionData], date: str) -> list[SessionData]:
-    return sorted([s for s in sessions if s.date == date], key=lambda s: s.first_timestamp, reverse=True)
+    return sorted(
+        [s for s in sessions if s.date == date],
+        key=lambda s: s.first_timestamp,
+        reverse=True,
+    )
 
 
-def get_session_by_id(sessions: list[SessionData], session_id: str) -> Optional[SessionData]:
+def get_session_by_id(
+    sessions: list[SessionData], session_id: str
+) -> Optional[SessionData]:
     return next((s for s in sessions if s.session_id == session_id), None)

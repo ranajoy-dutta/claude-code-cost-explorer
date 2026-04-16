@@ -1,4 +1,3 @@
-import pytest
 from cost import calculate_cost, get_rates, DEFAULT_RATES
 
 
@@ -37,23 +36,57 @@ class TestCalculateCost:
 
     def test_output_tokens_sonnet(self):
         # 1M output tokens at $15/MTok = $15
-        assert abs(calculate_cost("claude-sonnet-4-6", {"output_tokens": 1_000_000}) - 15.0) < 1e-9
+        assert (
+            abs(
+                calculate_cost("claude-sonnet-4-6", {"output_tokens": 1_000_000}) - 15.0
+            )
+            < 1e-9
+        )
 
     def test_input_tokens_opus(self):
         # 1M input tokens at $15/MTok = $15
-        assert abs(calculate_cost("claude-opus-4-6", {"input_tokens": 1_000_000}) - 15.0) < 1e-9
+        assert (
+            abs(calculate_cost("claude-opus-4-6", {"input_tokens": 1_000_000}) - 15.0)
+            < 1e-9
+        )
 
     def test_cache_write_haiku(self):
-        assert abs(calculate_cost("claude-haiku-4-5-20251001", {"cache_creation_input_tokens": 1_000_000}) - 1.00) < 1e-9
+        assert (
+            abs(
+                calculate_cost(
+                    "claude-haiku-4-5-20251001",
+                    {"cache_creation_input_tokens": 1_000_000},
+                )
+                - 1.00
+            )
+            < 1e-9
+        )
 
     def test_cache_read_haiku(self):
-        assert abs(calculate_cost("claude-haiku-4-5-20251001", {"cache_read_input_tokens": 1_000_000}) - 0.08) < 1e-9
+        assert (
+            abs(
+                calculate_cost(
+                    "claude-haiku-4-5-20251001", {"cache_read_input_tokens": 1_000_000}
+                )
+                - 0.08
+            )
+            < 1e-9
+        )
 
     def test_all_token_types_combined(self):
-        usage = {"input_tokens": 100, "output_tokens": 200,
-                 "cache_creation_input_tokens": 300, "cache_read_input_tokens": 400}
-        expected = (100*3 + 200*15 + 300*3.75 + 400*0.30) / 1e6
+        usage = {
+            "input_tokens": 100,
+            "output_tokens": 200,
+            "cache_creation_input_tokens": 300,
+            "cache_read_input_tokens": 400,
+        }
+        expected = (100 * 3 + 200 * 15 + 300 * 3.75 + 400 * 0.30) / 1e6
         assert abs(calculate_cost("claude-sonnet-4-6", usage) - expected) < 1e-9
 
     def test_cost_is_positive(self):
-        assert calculate_cost("claude-opus-4-6", {"input_tokens": 500, "output_tokens": 100}) > 0
+        assert (
+            calculate_cost(
+                "claude-opus-4-6", {"input_tokens": 500, "output_tokens": 100}
+            )
+            > 0
+        )
