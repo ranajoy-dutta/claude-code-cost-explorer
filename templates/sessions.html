@@ -20,7 +20,7 @@
       <td>{{ session.message_count }}</td>
       <td class="tokens">{{ format_tokens(session.total_input_tokens) }}</td>
       <td class="tokens">{{ format_tokens(session.total_output_tokens) }}</td>
-      <td class="tokens">{{ session.first_timestamp[11:16] }}</td>
+      <td class="tokens">{{ session.first_timestamp[:16].replace("T", " ") }}</td>
     </tr>
     {% endfor %}
   </tbody>
