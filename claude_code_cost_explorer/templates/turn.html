@@ -1,59 +1,89 @@
 {% extends "base.html" %}
 {% block title %}Turn Detail — {{ session.title }}{% endblock %}
 {% block breadcrumb %}
-  <a href="/">All Days</a> /
-  <a href="/day/{{ session.date }}">{{ session.date }}</a> /
-  <a href="/session/{{ session.session_id }}">{{ session.title }}</a> /
-  Turn Detail
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb"><a href="/">All Days</a></span>
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb"><a href="/day/{{ session.date }}">{{ session.date }}</a></span>
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb"><a href="/session/{{ session.session_id }}">{{ session.title }}</a></span>
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb">Turn Detail</span>
 {% endblock %}
 {% block content %}
-<a class="back-link" href="/session/{{ session.session_id }}">← Back to {{ session.title }}</a>
-<p style="color:#666; margin-bottom:16px; font-size:13px;">
-  Model: <span class="model-tag">{{ turn.model.replace("claude-","") }}</span>
-  &nbsp;|&nbsp; Time: {{ turn.timestamp[11:19] }}
-  &nbsp;|&nbsp; Cost: <span class="cost">{{ format_cost(turn.cost_usd) }}</span>
-</p>
+<a class="ccx-back" href="/session/{{ session.session_id }}">← Back to {{ session.title }}</a>
 
+{# ── Turn Info ── #}
+<div class="ccx-metrics" style="margin-bottom:24px;">
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Model</span>
+    <span class="ccx-metric__value" style="font-size:14px;">
+      <span class="ccx-badge ccx-badge--model">{{ turn.model.replace("claude-","") }}</span>
+    </span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Time</span>
+    <span class="ccx-metric__value" style="font-size:14px;">{{ turn.timestamp[:19].replace("T", " ") }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Cost</span>
+    <span class="ccx-metric__value {{ cost_severity(turn.cost_usd) }}">{{ format_cost(turn.cost_usd) }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Input</span>
+    <span class="ccx-metric__value">{{ format_tokens(turn.usage.get("input_tokens", 0)) }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Output</span>
+    <span class="ccx-metric__value">{{ format_tokens(turn.usage.get("output_tokens", 0)) }}</span>
+  </div>
+  {% if turn.duration_seconds %}
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Duration</span>
+    <span class="ccx-metric__value" style="font-size:14px;">{{ format_duration(turn.duration_seconds) }}</span>
+  </div>
+  {% endif %}
+</div>
+
+{# ── Conversation ── #}
 {% if turn.user_prompt_full or turn.assistant_content %}
-<h2 style="margin-bottom:16px;">Conversation</h2>
+<h2>Conversation</h2>
 
 {% if turn.user_prompt_full %}
-<div style="margin-bottom:16px; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.1);">
-  <div style="background:#e8f0fe; padding:10px 16px; border-bottom:1px solid #d0e1fd;">
-    <span style="font-size:12px; font-weight:600; color:#1a56db;">User</span>
+<div class="ccx-card" style="margin-bottom:16px;">
+  <div style="padding:10px 16px;border-bottom:1px solid var(--ccx-border);">
+    <span style="font-size:12px;font-weight:600;color:var(--ccx-accent-soft);">👤 User</span>
   </div>
   <div style="padding:14px 16px;">
-    <pre style="font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word; color:#1a1a1a; margin:0; font-family:inherit;">{{ turn.user_prompt_full }}</pre>
+    <div class="ccx-markdown">{{ turn.user_prompt_full | markdown }}</div>
   </div>
 </div>
 {% endif %}
 
 {% if turn.assistant_content %}
-<div style="margin-bottom:24px; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.1);">
-  <div style="background:#f0fdf4; padding:10px 16px; border-bottom:1px solid #d1fae5;">
-    <span style="font-size:12px; font-weight:600; color:#065f46;">Assistant</span>
+<div class="ccx-card" style="margin-bottom:24px;">
+  <div style="padding:10px 16px;border-bottom:1px solid var(--ccx-border);">
+    <span style="font-size:12px;font-weight:600;color:var(--ccx-cost-low);">🤖 Assistant</span>
   </div>
   <div style="padding:0;">
     {% for block in turn.assistant_content %}
-      {% if block.get("type") == "thinking" %}
-        <details style="border-bottom:1px solid #f0f0f0;">
-          <summary style="padding:10px 16px; cursor:pointer; font-size:12px; color:#888; user-select:none;">
-            Thinking ({{ block.get("thinking","")|length }} chars)
-          </summary>
-          <div style="padding:10px 16px; background:#fafafa;">
-            <pre style="font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-word; color:#555; margin:0; font-family:inherit;">{{ block.get("thinking","") }}</pre>
-          </div>
-        </details>
+      {% if block.get("type") == "thinking" and block.get("thinking", "")|length > 0 %}
+      <details class="ccx-thinking" style="margin:8px 16px;" open>
+        <summary>Thinking ({{ block.get("thinking","")|length|string }} chars)</summary>
+        <div class="ccx-thinking__content">{{ block.get("thinking","") }}</div>
+      </details>
+
       {% elif block.get("type") == "text" %}
-        <div style="padding:14px 16px; border-bottom:1px solid #f0f0f0;">
-          <pre style="font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word; color:#1a1a1a; margin:0; font-family:inherit;">{{ block.get("text","") }}</pre>
-        </div>
+      <div style="padding:14px 16px;border-bottom:1px solid rgba(42,42,45,0.5);">
+        <div class="ccx-markdown">{{ block.get("text","") | markdown }}</div>
+      </div>
+
       {% elif block.get("type") == "tool_use" %}
-        <div style="padding:10px 16px; border-bottom:1px solid #f0f0f0; background:#fffbeb;">
-          <span class="model-tag" style="background:#fef3c7;color:#92400e;">{{ block.get("name","tool") }}</span>
-          <span style="font-size:12px; color:#888; margin-left:8px;">tool call →</span>
-          <span style="font-size:12px; font-family:monospace; color:#666;">{{ block.get("id","")[:16] }}…</span>
-        </div>
+      <div class="ccx-tool-tag" style="margin:8px 16px;">
+        <span class="ccx-tool-tag__name">🔧 {{ block.get("name","tool") }}</span>
+        <span class="ccx-tool-tag__arrow">→</span>
+        <span class="ccx-tool-tag__id">{{ block.get("id","")[:16] }}…</span>
+      </div>
       {% endif %}
     {% endfor %}
   </div>
@@ -62,41 +92,41 @@
 
 {% endif %}
 
+{# ── Tool Calls ── #}
 {% if turn.tool_calls %}
-<h2 style="margin-bottom:16px;">Tool Calls</h2>
+<h2>Tool Calls</h2>
 
 {% for tc in turn.tool_calls %}
-<div style="margin-bottom:24px; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.1);">
-  <div style="background:#f0f0f0; padding:10px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #e0e0e0;">
-    <span class="model-tag" style="background:#fef3c7;color:#92400e;">{{ tc.name }}</span>
-    <span style="font-family:monospace; font-size:12px; color:#888;">{{ tc.tool_use_id[:16] }}…</span>
-  </div>
-  {% if tc.input %}
-  <div style="padding:12px 16px; border-bottom:1px solid #f0f0f0;">
-    <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">Input</div>
-    <pre style="font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all; color:#333; margin:0;">{{ tc.input | tojson(indent=2) }}</pre>
-  </div>
-  {% endif %}
-  {% if tc.result_content %}
-  <div style="padding:12px 16px;">
-    <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px;">Result</div>
+<details class="ccx-tool" style="margin:0 0 16px;border:1px solid var(--ccx-border);border-radius:var(--ccx-radius-lg);" open>
+  <summary style="padding:12px 16px;">
+    <span class="ccx-tool__name">🔧 {{ tc.name }}</span>
+    {% if tc.input and tc.input.get("file_path") %}<span style="color:var(--ccx-text-muted);font-size:12px;">{{ tc.input.get("file_path") }}</span>{% endif %}
+    <span class="ccx-tool__id">{{ tc.tool_use_id[:16] }}…</span>
+  </summary>
+  <div class="ccx-tool__body">
+    {% if tc.input %}
+    <div class="ccx-tool__section-label">Input</div>
+    <pre class="ccx-tool__pre">{{ tc.input | tojson(indent=2) }}</pre>
+    {% endif %}
+    {% if tc.result_content %}
+    <div class="ccx-tool__section-label">Result</div>
     {% for item in tc.result_content %}
       {% if item.get("type") == "text" %}
-        <pre style="font-size:12px; line-height:1.5; white-space:pre-wrap; word-break:break-all; color:#333; margin:0; max-height:300px; overflow-y:auto;">{{ item.get("text","") }}</pre>
+      <pre class="ccx-tool__pre">{{ item.get("text","") }}</pre>
       {% elif item.get("type") == "tool_reference" %}
-        <span style="font-size:12px; color:#666;">[tool_reference: {{ item.get("tool_name","") }}]</span>
+      <div class="ccx-tool__pre" style="color:var(--ccx-text-muted);">[tool_reference: {{ item.get("tool_name","") }}]</div>
       {% else %}
-        <pre style="font-size:12px; color:#666; margin:0;">{{ item | tojson(indent=2) }}</pre>
+      <pre class="ccx-tool__pre">{{ item | tojson(indent=2) }}</pre>
       {% endif %}
     {% endfor %}
+    {% endif %}
   </div>
-  {% endif %}
-</div>
+</details>
 {% endfor %}
 
 {% endif %}
 
 {% if not turn.tool_calls and not turn.user_prompt_full and not turn.assistant_content %}
-<div class="empty">No detail available for this turn.</div>
+<div class="ccx-empty">No detail available for this turn.</div>
 {% endif %}
 {% endblock %}

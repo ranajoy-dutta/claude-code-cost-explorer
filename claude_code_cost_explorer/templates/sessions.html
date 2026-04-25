@@ -1,28 +1,52 @@
 {% extends "base.html" %}
 {% block title %}Sessions — {{ date }}{% endblock %}
-{% block breadcrumb %}<a href="/">All Days</a> / {{ date }}{% endblock %}
+{% block breadcrumb %}
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb"><a href="/">All Days</a></span>
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb">{{ date }}</span>
+{% endblock %}
 {% block content %}
-<a class="back-link" href="/">← Back to all days</a>
+<a class="ccx-back" href="/">← Back to all days</a>
 <h2>Sessions on {{ date }}</h2>
-<div class="summary-bar">
-  <div class="metric"><span class="metric-label">Total Cost</span><span class="metric-value">{{ format_cost(total_cost) }}</span></div>
-  <div class="metric"><span class="metric-label">Sessions</span><span class="metric-value">{{ sessions|length }}</span></div>
-  <div class="metric"><span class="metric-label">API Calls</span><span class="metric-value">{{ sessions|sum(attribute='message_count') }}</span></div>
+<div class="ccx-metrics">
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Total Cost</span>
+    <span class="ccx-metric__value ccx-metric__value--accent">{{ format_cost(total_cost) }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Sessions</span>
+    <span class="ccx-metric__value">{{ sessions|length }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">API Calls</span>
+    <span class="ccx-metric__value">{{ sessions|sum(attribute='message_count') }}</span>
+  </div>
 </div>
-<table>
-  <thead><tr><th>Session</th><th>Project</th><th>Cost</th><th>API Calls</th><th>Input Tokens</th><th>Output Tokens</th><th>Time</th></tr></thead>
-  <tbody>
-    {% for session in sessions %}
-    <tr>
-      <td><a href="/session/{{ session.session_id }}">{{ session.title }}</a></td>
-      <td title="{{ session.project_path }}">{{ session.project_name }}</td>
-      <td class="cost">{{ format_cost(session.total_cost) }}</td>
-      <td>{{ session.message_count }}</td>
-      <td class="tokens">{{ format_tokens(session.total_input_tokens) }}</td>
-      <td class="tokens">{{ format_tokens(session.total_output_tokens) }}</td>
-      <td class="tokens">{{ session.first_timestamp[:16].replace("T", " ") }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="ccx-card">
+  <table class="ccx-table">
+    <thead><tr>
+      <th>Session</th>
+      <th>Project</th>
+      <th>Cost</th>
+      <th>API Calls</th>
+      <th>Input Tokens</th>
+      <th>Output Tokens</th>
+      <th>Time</th>
+    </tr></thead>
+    <tbody>
+      {% for session in sessions %}
+      <tr>
+        <td><a href="/session/{{ session.session_id }}">{{ session.title }}</a></td>
+        <td><a href="/session/{{ session.session_id }}" style="color:var(--ccx-text-secondary);" title="{{ session.project_path }}">{{ session.project_name }}</a></td>
+        <td class="ccx-cost {{ cost_severity(session.total_cost) }}">{{ format_cost(session.total_cost) }}</td>
+        <td class="ccx-tokens">{{ session.message_count }}</td>
+        <td class="ccx-tokens">{{ format_tokens(session.total_input_tokens) }}</td>
+        <td class="ccx-tokens">{{ format_tokens(session.total_output_tokens) }}</td>
+        <td class="ccx-tokens">{{ session.first_timestamp[:16].replace("T", " ") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

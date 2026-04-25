@@ -1,5 +1,5 @@
 import os
-from reader import (
+from claude_code_cost_explorer.reader import (
     parse_session_file,
     build_day_summaries,
     get_session_by_id,
@@ -36,7 +36,7 @@ class TestParseSessionFile:
         assert s.message_count == 2
 
     def test_cost_correct(self):
-        from cost import calculate_cost
+        from claude_code_cost_explorer.cost import calculate_cost
 
         s = parse_session_file(os.path.join(FIXTURES, "session_simple.jsonl"), "/tmp")
         t1 = calculate_cost(

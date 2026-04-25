@@ -1,52 +1,148 @@
 {% extends "base.html" %}
-{% block title %}{{ session.title }}{% endblock %}
+{% block title %}{{ session.title }} — Claude Code Cost Explorer{% endblock %}
 {% block breadcrumb %}
-  <a href="/">All Days</a> / <a href="/day/{{ session.date }}">{{ session.date }}</a> / {{ session.title }}
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb"><a href="/">All Days</a></span>
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb"><a href="/day/{{ session.date }}">{{ session.date }}</a></span>
+<span class="ccx-header__sep">/</span>
+<span class="ccx-header__crumb">{{ session.title }}</span>
 {% endblock %}
 {% block content %}
-<a class="back-link" href="/day/{{ session.date }}">← Back to {{ session.date }}</a>
-<h2>{{ session.title }}</h2>
-<p style="color:#666; margin-bottom:16px; font-size:13px;">{{ session.project_path }} &nbsp;|&nbsp; Session: {{ session.session_id[:8] }}</p>
-<div class="summary-bar">
-  <div class="metric"><span class="metric-label">Total Cost</span><span class="metric-value">{{ format_cost(session.total_cost) }}</span></div>
-  <div class="metric"><span class="metric-label">API Calls</span><span class="metric-value">{{ session.message_count }}</span></div>
-  <div class="metric"><span class="metric-label">Input</span><span class="metric-value">{{ format_tokens(session.total_input_tokens) }}</span></div>
-  <div class="metric"><span class="metric-label">Output</span><span class="metric-value">{{ format_tokens(session.total_output_tokens) }}</span></div>
-  <div class="metric"><span class="metric-label">Cache Write</span><span class="metric-value">{{ format_tokens(session.total_cache_write_tokens) }}</span></div>
-  <div class="metric"><span class="metric-label">Cache Read</span><span class="metric-value">{{ format_tokens(session.total_cache_read_tokens) }}</span></div>
+<a class="ccx-back" href="/day/{{ session.date }}">← Back to {{ session.date }}</a>
+
+<div class="ccx-session-info">
+  <div class="ccx-session-info__title">{{ session.title }}</div>
+  <div class="ccx-session-info__meta">
+    <span>{{ session.project_name }}</span> · {{ session.session_id[:8] }} · {{ session.message_count }} turns
+    {% if session.duration_seconds %} · {{ format_duration(session.duration_seconds) }}{% endif %}
+  </div>
 </div>
-<table>
-  <thead><tr><th>#</th><th>Time</th><th>Model</th><th>User Prompt</th><th>Cost</th><th>Input</th><th>Output</th><th>Cache Write</th><th>Cache Read</th></tr></thead>
-  <tbody>
-    {% for turn in session.turns %}
-    <tr>
-      <td>{{ loop.index }}</td>
-      <td class="tokens"><a href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}">{{ turn.timestamp[:19].replace("T", " ") }}</a></td>
-      <td><span class="model-tag">{{ turn.model.replace("claude-","") }}</span></td>
-      {% if turn.tool_calls %}
-      <td class="prompt-preview">
-        <a href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}">
-          {% if turn.tool_calls|length == 1 %}
-            [tool: {{ turn.tool_calls[0].name }}]
-          {% else %}
-            [{{ turn.tool_calls|length }} tools: {{ turn.tool_calls|map(attribute='name')|join(', ') }}]
-          {% endif %}
-        </a>
-      </td>
-      {% elif turn.user_prompt %}
-      <td class="prompt-preview">
-        <a href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}" title="{{ turn.user_prompt }}">{{ turn.user_prompt }}</a>
-      </td>
-      {% else %}
-      <td class="prompt-preview">—</td>
+
+<div class="ccx-metrics">
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Total Cost</span>
+    <span class="ccx-metric__value ccx-metric__value--accent">{{ format_cost(session.total_cost) }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Turns</span>
+    <span class="ccx-metric__value">{{ session.message_count }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Input</span>
+    <span class="ccx-metric__value">{{ format_tokens(session.total_input_tokens) }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Output</span>
+    <span class="ccx-metric__value">{{ format_tokens(session.total_output_tokens) }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Cache Write</span>
+    <span class="ccx-metric__value">{{ format_tokens(session.total_cache_write_tokens) }}</span>
+  </div>
+  <div class="ccx-metric">
+    <span class="ccx-metric__label">Cache Read</span>
+    <span class="ccx-metric__value">{{ format_tokens(session.total_cache_read_tokens) }}</span>
+  </div>
+</div>
+
+{# ═══ Conversation Timeline ═══ #}
+<h2>Conversation</h2>
+<div class="ccx-timeline">
+  {% for turn in session.turns %}
+  <div class="ccx-turn">
+    <div class="ccx-turn__dot"></div>
+    <div class="ccx-turn__card">
+
+      {# ── Turn Header ── #}
+      <div class="ccx-turn__header">
+        <span class="ccx-turn__time">{{ turn.timestamp[:19].replace("T", " ") }}</span>
+        <span class="ccx-badge ccx-badge--model">{{ turn.model.replace("claude-","") }}</span>
+        <span class="ccx-turn__spacer"></span>
+        {% if turn.duration_seconds %}
+        <span class="ccx-turn__duration">⏱ {{ format_duration(turn.duration_seconds) }}</span>
+        {% endif %}
+        <span class="ccx-turn__cost ccx-badge ccx-badge--cost {{ 'cost-badge-' + cost_severity(turn.cost_usd).replace('cost-','') }}">{{ format_cost(turn.cost_usd) }}</span>
+      </div>
+
+      {# ── User Message ── #}
+      {% if turn.user_prompt_full or turn.user_prompt %}
+      <div class="ccx-bubble-user">
+        <div class="ccx-bubble-user__label">👤 User</div>
+        <div class="ccx-markdown">{{ (turn.user_prompt_full or turn.user_prompt) | markdown }}</div>
+      </div>
       {% endif %}
-      <td class="cost">{{ format_cost(turn.cost_usd) }}</td>
-      <td class="tokens">{{ format_tokens(turn.usage.get("input_tokens", 0)) }}</td>
-      <td class="tokens">{{ format_tokens(turn.usage.get("output_tokens", 0)) }}</td>
-      <td class="tokens">{{ format_tokens(turn.usage.get("cache_creation_input_tokens", 0)) }}</td>
-      <td class="tokens">{{ format_tokens(turn.usage.get("cache_read_input_tokens", 0)) }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+
+      {# ── Tool Results (preceding this turn) ── #}
+      {% if turn.tool_calls %}
+      {% for tc in turn.tool_calls %}
+      <details class="ccx-tool">
+        <summary>
+          <span class="ccx-tool__name">🔧 {{ tc.name }}</span>
+          {% if tc.input and tc.input.get("file_path") %}<span style="color:var(--ccx-text-muted);font-size:12px;">{{ tc.input.get("file_path") }}</span>{% endif %}
+          <span class="ccx-tool__id">{{ tc.tool_use_id[:12] }}…</span>
+        </summary>
+        <div class="ccx-tool__body">
+          {% if tc.input %}
+          <div class="ccx-tool__section-label">Input</div>
+          <pre class="ccx-tool__pre">{{ tc.input | tojson(indent=2) }}</pre>
+          {% endif %}
+          {% if tc.result_content %}
+          <div class="ccx-tool__section-label">Result</div>
+          {% for item in tc.result_content %}
+            {% if item.get("type") == "text" %}
+            <pre class="ccx-tool__pre">{{ item.get("text","") }}</pre>
+            {% elif item.get("type") == "tool_reference" %}
+            <div class="ccx-tool__pre" style="color:var(--ccx-text-muted);">[tool_reference: {{ item.get("tool_name","") }}]</div>
+            {% else %}
+            <pre class="ccx-tool__pre">{{ item | tojson(indent=2) }}</pre>
+            {% endif %}
+          {% endfor %}
+          {% endif %}
+        </div>
+      </details>
+      {% endfor %}
+      {% endif %}
+
+      {# ── Assistant Response ── #}
+      {% if turn.assistant_content %}
+      <div class="ccx-assistant">
+        {% for block in turn.assistant_content %}
+          {% if block.get("type") == "thinking" and block.get("thinking", "")|length > 0 %}
+          <details class="ccx-thinking" style="margin:8px 0;">
+            <summary>Thinking ({{ block.get("thinking","")|length|string }} chars)</summary>
+            <div class="ccx-thinking__content">{{ block.get("thinking","") }}</div>
+          </details>
+
+          {% elif block.get("type") == "text" %}
+          <div class="ccx-assistant__text ccx-markdown">{{ block.get("text","") | markdown }}</div>
+
+          {% elif block.get("type") == "tool_use" %}
+          <div class="ccx-tool-tag">
+            <span class="ccx-tool-tag__name">🔧 {{ block.get("name","tool") }}</span>
+            <span class="ccx-tool-tag__arrow">→</span>
+            <span class="ccx-tool-tag__id">{{ block.get("id","")[:12] }}…</span>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {# ── Turn Footer ── #}
+      <div class="ccx-turn__footer">
+        <span class="ccx-turn__footer-item">📥 {{ format_tokens(turn.usage.get("input_tokens", 0)) }}</span>
+        <span class="ccx-turn__footer-item">📤 {{ format_tokens(turn.usage.get("output_tokens", 0)) }}</span>
+        {% if turn.usage.get("cache_creation_input_tokens", 0) %}
+        <span class="ccx-turn__footer-item">✍ {{ format_tokens(turn.usage.get("cache_creation_input_tokens", 0)) }}</span>
+        {% endif %}
+        {% if turn.usage.get("cache_read_input_tokens", 0) %}
+        <span class="ccx-turn__footer-item">📋 {{ format_tokens(turn.usage.get("cache_read_input_tokens", 0)) }}</span>
+        {% endif %}
+        <a class="ccx-turn__footer-link" href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}">View full turn →</a>
+      </div>
+
+    </div>
+  </div>
+  {% endfor %}
+</div>
 {% endblock %}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 import json
 import os
+from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Optional
 from claude_code_cost_explorer.cost import calculate_cost
@@ -31,6 +32,8 @@ class Turn:
     assistant_content: list = field(
         default_factory=list
     )  # assistant response content blocks
+    duration_seconds: float = 0.0  # time until next turn (latency)
+    thinking_chars: int = 0  # total chars in thinking blocks
 
 
 @dataclass
@@ -49,6 +52,7 @@ class SessionData:
     first_timestamp: str = ""
     last_timestamp: str = ""
     date: str = ""
+    duration_seconds: float = 0.0  # total session wall-clock duration
 
 
 @dataclass
@@ -140,6 +144,8 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     pending_user_prompt_full = ""
     pending_tool_calls: list = []
     turns = []
+    _uuid_to_turn = {}
+    _assistant_parent_map = {}
     for r in records:
         rtype = r.get("type")
         if rtype == "user":
@@ -151,14 +157,17 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
                     if isinstance(item, dict) and item.get("type") == "tool_result":
                         tool_use_id = item.get("tool_use_id", "")
                         tool_info = tool_use_map.get(tool_use_id, {})
-                        result_content = item.get("content") or []
+                        raw_result = item.get("content")
+                        # Normalize: content can be a list, a string, or None
+                        if isinstance(raw_result, list):
+                            result_content = raw_result
+                        elif isinstance(raw_result, str):
+                            result_content = [{"type": "text", "text": raw_result}]
+                        else:
+                            result_content = []
                         name = tool_info.get("name", "")
                         if not name:
-                            for rc in (
-                                result_content
-                                if isinstance(result_content, list)
-                                else []
-                            ):
+                            for rc in result_content:
                                 if (
                                     isinstance(rc, dict)
                                     and rc.get("type") == "tool_reference"
@@ -172,9 +181,7 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
                                 tool_use_id=tool_use_id,
                                 name=name,
                                 input=tool_info.get("input", {}),
-                                result_content=result_content
-                                if isinstance(result_content, list)
-                                else [],
+                                result_content=result_content,
                             )
                         )
             # Only set last_user_prompt if there's actual text content (not just tool results)
@@ -193,30 +200,62 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
                 elif isinstance(content, str) and not content.startswith("[Request"):
                     pending_user_prompt_full = content
         elif rtype == "assistant":
-            if r.get("parentUuid") in assistant_uuids:
-                continue  # non-root: part of multi-record API call chain
+            parent_uuid = r.get("parentUuid", "")
             model = r.get("message", {}).get("model", "")
             if model == "<synthetic>":
                 continue
             usage = r.get("message", {}).get("usage")
+            asst_content = r.get("message", {}).get("content") or []
+
+            if parent_uuid in assistant_uuids:
+                # Child record: merge content blocks into the parent turn
+                # Walk the chain to find the root turn
+                root_uuid = parent_uuid
+                visited = set()
+                while root_uuid in _assistant_parent_map and root_uuid not in visited:
+                    visited.add(root_uuid)
+                    if _assistant_parent_map[root_uuid] in assistant_uuids:
+                        root_uuid = _assistant_parent_map[root_uuid]
+                    else:
+                        break
+                if root_uuid in _uuid_to_turn:
+                    parent_turn = _uuid_to_turn[root_uuid]
+                    parent_turn.assistant_content.extend(asst_content)
+                    # The child record's usage is cumulative for the turn, so take the max
+                    if usage:
+                        for key in (
+                            "input_tokens",
+                            "output_tokens",
+                            "cache_creation_input_tokens",
+                            "cache_read_input_tokens",
+                        ):
+                            parent_turn.usage[key] = max(
+                                parent_turn.usage.get(key, 0), usage.get(key, 0)
+                            )
+                        parent_turn.cost_usd = calculate_cost(
+                            parent_turn.model, parent_turn.usage
+                        )
+                # Track this child's parent so grandchildren can find the root
+                _assistant_parent_map[r.get("uuid", "")] = parent_uuid
+                continue
+
             if not usage:
                 continue
-            # Get assistant content blocks (for the root record only)
-            asst_content = r.get("message", {}).get("content") or []
-            # Step C: attach and clear pending_tool_calls
-            turns.append(
-                Turn(
-                    uuid=r.get("uuid", ""),
-                    timestamp=r.get("timestamp", ""),
-                    model=model,
-                    usage=usage,
-                    cost_usd=calculate_cost(model, usage),
-                    user_prompt=last_user_prompt,
-                    user_prompt_full=pending_user_prompt_full,
-                    tool_calls=pending_tool_calls,
-                    assistant_content=asst_content,
-                )
+            # Root assistant record: create a new Turn
+            turn = Turn(
+                uuid=r.get("uuid", ""),
+                timestamp=r.get("timestamp", ""),
+                model=model,
+                usage=usage,
+                cost_usd=calculate_cost(model, usage),
+                user_prompt=last_user_prompt,
+                user_prompt_full=pending_user_prompt_full,
+                tool_calls=pending_tool_calls,
+                assistant_content=asst_content,
             )
+            turns.append(turn)
+            _uuid_to_turn[r.get("uuid", "")] = turn
+            _assistant_parent_map[r.get("uuid", "")] = parent_uuid
             last_user_prompt = ""
             pending_user_prompt_full = ""
             pending_tool_calls = []
@@ -227,7 +266,34 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     if not project_path:
         project_path = fallback_name
 
+    # Compute per-turn duration from consecutive timestamps
+    for i, turn in enumerate(turns):
+        # Count thinking chars
+        for block in turn.assistant_content:
+            if isinstance(block, dict) and block.get("type") == "thinking":
+                turn.thinking_chars += len(block.get("thinking", ""))
+        # Compute latency to next turn
+        if i + 1 < len(turns) and turn.timestamp and turns[i + 1].timestamp:
+            try:
+                t0 = datetime.fromisoformat(turn.timestamp.replace("Z", "+00:00"))
+                t1 = datetime.fromisoformat(
+                    turns[i + 1].timestamp.replace("Z", "+00:00")
+                )
+                turn.duration_seconds = max(0, (t1 - t0).total_seconds())
+            except (ValueError, TypeError):
+                pass
+
+    # Session-level duration
+    session_duration = 0.0
     timestamps = [t.timestamp for t in turns if t.timestamp]
+    if len(timestamps) >= 2:
+        try:
+            t_first = datetime.fromisoformat(min(timestamps).replace("Z", "+00:00"))
+            t_last = datetime.fromisoformat(max(timestamps).replace("Z", "+00:00"))
+            session_duration = max(0, (t_last - t_first).total_seconds())
+        except (ValueError, TypeError):
+            pass
+
     return SessionData(
         session_id=session_id,
         project_path=project_path,
@@ -247,6 +313,7 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
         first_timestamp=min(timestamps) if timestamps else "",
         last_timestamp=max(timestamps) if timestamps else "",
         date=min(timestamps)[:10] if timestamps else "",
+        duration_seconds=session_duration,
     )
 
 

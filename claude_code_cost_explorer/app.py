@@ -9,6 +9,8 @@ from claude_code_cost_explorer.reader import (
 )
 
 import pathlib
+import markdown
+from markupsafe import Markup
 
 app = Flask(__name__, template_folder=str(pathlib.Path(__file__).parent / "templates"))
 
@@ -31,7 +33,43 @@ def _format_tokens(n: int) -> str:
     return str(n)
 
 
-app.jinja_env.globals.update(format_cost=_format_cost, format_tokens=_format_tokens)
+def _format_duration(seconds: float) -> str:
+    if seconds <= 0:
+        return ""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    if secs == 0:
+        return f"{minutes}m"
+    return f"{minutes}m {secs}s"
+
+
+def _cost_severity(cost: float) -> str:
+    if cost >= 15.0:
+        return "cost-critical"
+    if cost >= 5.0:
+        return "cost-high"
+    if cost >= 1.0:
+        return "cost-med"
+    return "cost-low"
+
+
+def _render_markdown(text: str) -> Markup:
+    if not text:
+        return Markup("")
+    html = markdown.markdown(text, extensions=["fenced_code", "tables", "nl2br"])
+    return Markup(html)
+
+
+app.jinja_env.filters["markdown"] = _render_markdown
+
+app.jinja_env.globals.update(
+    format_cost=_format_cost,
+    format_tokens=_format_tokens,
+    format_duration=_format_duration,
+    cost_severity=_cost_severity,
+)
 
 
 @app.route("/")
