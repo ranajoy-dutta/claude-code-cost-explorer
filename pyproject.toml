@@ -5,7 +5,7 @@ description = "Local web app to explore Claude Code API cost and token usage by 
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "flask>=3.1.1",
     "markdown>=3.9",
