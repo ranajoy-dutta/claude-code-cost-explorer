@@ -19,7 +19,7 @@ present in the source log, and tool call inputs/results.
 
 | Home | Sessions | Detail |
 |------|----------|--------|
-| ![Home](docs/screenshots/home.png) | ![Sessions](docs/screenshots/sessions.png) | ![Detail](docs/screenshots/session.png) |
+| ![Home](https://raw.githubusercontent.com/ranajoy-dutta/claude-code-cost-explorer/refs/heads/main/docs/screenshots/home.png) | ![Sessions](https://raw.githubusercontent.com/ranajoy-dutta/claude-code-cost-explorer/refs/heads/main/docs/screenshots/Sessions.png) | ![Detail](https://raw.githubusercontent.com/ranajoy-dutta/claude-code-cost-explorer/refs/heads/main/docs/screenshots/Session.png) |
 
 ## Install
 
