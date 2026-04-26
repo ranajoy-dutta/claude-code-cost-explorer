@@ -1,4 +1,4 @@
-"""Claude Code Cost Tracker. Run: flask --app app run --port 5050"""
+"""Claude Code Cost Tracker. Run: ccx"""
 
 from flask import Flask, render_template, request, abort
 from claude_code_cost_explorer.reader import (
@@ -199,17 +199,21 @@ def main():
     import threading
     import os
     import argparse
+    from waitress import serve
 
     parser = argparse.ArgumentParser(description="Claude Code Cost Explorer")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 5050)))
+    parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     args = parser.parse_args()
 
-    url = f"http://localhost:{args.port}"
+    browser_host = "localhost" if args.host in {"127.0.0.1", "0.0.0.0"} else args.host
+    url = f"http://{browser_host}:{args.port}"
     threading.Timer(1.2, lambda: webbrowser.open(url)).start()
     print(f"  Claude Code Cost Explorer running at {url}")
+    print(f"  Listening on {args.host}:{args.port}")
     print("  Press Ctrl+C to quit.")
 
-    app.run(port=args.port, debug=False)
+    serve(app, host=args.host, port=args.port, threads=4)
 
 
 if __name__ == "__main__":
