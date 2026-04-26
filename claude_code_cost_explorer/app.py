@@ -62,6 +62,76 @@ def _render_markdown(text: str) -> Markup:
     return Markup(html)
 
 
+def _action_label(turn) -> str:
+    """Derive a short action label for a turn (used in step pills)."""
+    # Check tool_calls first (tool results from the preceding user record)
+    if turn.tool_calls:
+        names = list(dict.fromkeys(tc.name for tc in turn.tool_calls))
+        if len(names) == 1:
+            return names[0]
+        return f"{names[0]} +{len(names) - 1}"
+    # Check assistant_content for tool_use blocks
+    tool_names = []
+    has_text = False
+    has_thinking = False
+    for block in turn.assistant_content or []:
+        if isinstance(block, dict):
+            if block.get("type") == "tool_use":
+                tool_names.append(block.get("name", "tool"))
+            elif block.get("type") == "text" and block.get("text", "").strip():
+                has_text = True
+            elif block.get("type") == "thinking":
+                has_thinking = True
+    if tool_names:
+        unique = list(dict.fromkeys(tool_names))
+        if len(unique) == 1:
+            return unique[0]
+        return f"{unique[0]} +{len(unique) - 1}"
+    if has_thinking and has_text:
+        return "Thinking + Response"
+    if has_thinking:
+        return "Thinking"
+    if has_text:
+        return "Response"
+    return "API Call"
+
+
+def _build_exchanges(turns):
+    """Group turns into exchanges for the conversation timeline.
+
+    An exchange starts at each turn that has a user_prompt_full (real user
+    message). All subsequent turns without a user prompt belong to the same
+    exchange as intermediate steps. The last turn in each exchange provides
+    the final assistant response.
+    """
+    exchanges = []
+    current = None
+    for turn in turns:
+        if turn.user_prompt_full or turn.user_prompt:
+            # Start a new exchange
+            if current is not None:
+                exchanges.append(current)
+            current = {
+                "user_turn": turn,
+                "intermediate_turns": [],
+                "final_turn": turn,  # default: same as user turn
+            }
+        else:
+            # Intermediate turn (tool-call continuation)
+            if current is None:
+                # Edge case: first turn has no user prompt
+                current = {
+                    "user_turn": None,
+                    "intermediate_turns": [],
+                    "final_turn": turn,
+                }
+            current["intermediate_turns"].append(turn)
+            current["final_turn"] = turn
+    if current is not None:
+        exchanges.append(current)
+    return exchanges
+
+
 app.jinja_env.filters["markdown"] = _render_markdown
 
 app.jinja_env.globals.update(
@@ -69,6 +139,7 @@ app.jinja_env.globals.update(
     format_tokens=_format_tokens,
     format_duration=_format_duration,
     cost_severity=_cost_severity,
+    action_label=_action_label,
 )
 
 
@@ -107,7 +178,8 @@ def session_detail_view(session_id):
     session = get_session_by_id(sessions, session_id)
     if not session:
         abort(404)
-    return render_template("session.html", session=session)
+    exchanges = _build_exchanges(session.turns)
+    return render_template("session.html", session=session, exchanges=exchanges)
 
 
 @app.route("/session/<session_id>/turn/<turn_uuid>")

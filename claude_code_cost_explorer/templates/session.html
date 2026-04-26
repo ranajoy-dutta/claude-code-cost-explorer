@@ -48,101 +48,298 @@
 
 {# ═══ Conversation Timeline ═══ #}
 <h2>Conversation</h2>
-<div class="ccx-timeline">
-  {% for turn in session.turns %}
-  <div class="ccx-turn">
-    <div class="ccx-turn__dot"></div>
-    <div class="ccx-turn__card">
+<div class="ccx-conversation">
+  {% for ex in exchanges %}
+  <div class="ccx-exchange">
 
-      {# ── Turn Header ── #}
-      <div class="ccx-turn__header">
-        <span class="ccx-turn__time">{{ turn.timestamp[:19].replace("T", " ") }}</span>
-        <span class="ccx-badge ccx-badge--model">{{ turn.model.replace("claude-","") }}</span>
-        <span class="ccx-turn__spacer"></span>
-        {% if turn.duration_seconds %}
-        <span class="ccx-turn__duration">⏱ {{ format_duration(turn.duration_seconds) }}</span>
+    {# ── Vertical spine that runs through the whole exchange ── #}
+    <div class="ccx-exchange__spine"></div>
+
+    {# ── User Bubble ── #}
+    {% if ex.user_turn and (ex.user_turn.user_prompt_full or ex.user_turn.user_prompt) %}
+    <div class="ccx-exchange__user">
+      <div class="ccx-exchange__user-label">
+        <span class="ccx-exchange__role-dot ccx-exchange__role-dot--user"></span>
+        <span>User</span>
+        <span class="ccx-exchange__user-time">{{ ex.user_turn.timestamp[:19].replace("T", " ") }}</span>
+      </div>
+      <div class="ccx-exchange__user-body ccx-markdown">{{ (ex.user_turn.user_prompt_full or ex.user_turn.user_prompt) | markdown }}</div>
+    </div>
+    {% endif %}
+
+    {# ── Agent Steps (vertical sub-timeline) ── #}
+    {% set all_steps = [] %}
+    {% if ex.user_turn %}{% set _ = all_steps.append(ex.user_turn) %}{% endif %}
+    {% for step in ex.intermediate_turns %}{% set _ = all_steps.append(step) %}{% endfor %}
+
+    {% if all_steps|length > 0 %}
+    <div class="ccx-exchange__agents">
+
+      {% set ns_agent = namespace(cost=0.0, duration=0.0, has_sub=false) %}
+      {% for step in all_steps %}
+        {% set ns_agent.cost = ns_agent.cost + step.cost_usd %}
+        {% set ns_agent.duration = ns_agent.duration + step.duration_seconds %}
+        {% if step.tool_calls or step.assistant_content %}
+          {% set ns_agent.has_sub = true %}
         {% endif %}
-        <span class="ccx-turn__cost ccx-badge ccx-badge--cost {{ 'cost-badge-' + cost_severity(turn.cost_usd).replace('cost-','') }}">{{ format_cost(turn.cost_usd) }}</span>
-      </div>
-
-      {# ── User Message ── #}
-      {% if turn.user_prompt_full or turn.user_prompt %}
-      <div class="ccx-bubble-user">
-        <div class="ccx-bubble-user__label">👤 User</div>
-        <div class="ccx-markdown">{{ (turn.user_prompt_full or turn.user_prompt) | markdown }}</div>
-      </div>
-      {% endif %}
-
-      {# ── Tool Results (preceding this turn) ── #}
-      {% if turn.tool_calls %}
-      {% for tc in turn.tool_calls %}
-      <details class="ccx-tool">
-        <summary>
-          <span class="ccx-tool__name">🔧 {{ tc.name }}</span>
-          {% if tc.input and tc.input.get("file_path") %}<span style="color:var(--ccx-text-muted);font-size:12px;">{{ tc.input.get("file_path") }}</span>{% endif %}
-          <span class="ccx-tool__id">{{ tc.tool_use_id[:12] }}…</span>
-        </summary>
-        <div class="ccx-tool__body">
-          {% if tc.input %}
-          <div class="ccx-tool__section-label">Input</div>
-          <pre class="ccx-tool__pre">{{ tc.input | tojson(indent=2) }}</pre>
-          {% endif %}
-          {% if tc.result_content %}
-          <div class="ccx-tool__section-label">Result</div>
-          {% for item in tc.result_content %}
-            {% if item.get("type") == "text" %}
-            <pre class="ccx-tool__pre">{{ item.get("text","") }}</pre>
-            {% elif item.get("type") == "tool_reference" %}
-            <div class="ccx-tool__pre" style="color:var(--ccx-text-muted);">[tool_reference: {{ item.get("tool_name","") }}]</div>
-            {% else %}
-            <pre class="ccx-tool__pre">{{ item | tojson(indent=2) }}</pre>
-            {% endif %}
-          {% endfor %}
-          {% endif %}
-        </div>
-      </details>
       {% endfor %}
-      {% endif %}
 
-      {# ── Assistant Response ── #}
-      {% if turn.assistant_content %}
-      <div class="ccx-assistant">
-        {% for block in turn.assistant_content %}
-          {% if block.get("type") == "thinking" and block.get("thinking", "")|length > 0 %}
-          <details class="ccx-thinking" style="margin:8px 0;">
-            <summary>Thinking ({{ block.get("thinking","")|length|string }} chars)</summary>
-            <div class="ccx-thinking__content">{{ block.get("thinking","") }}</div>
-          </details>
+      <div class="ccx-agent-row">
+        {# Dot on the spine #}
+        <div class="ccx-agent-dot"></div>
 
-          {% elif block.get("type") == "text" %}
-          <div class="ccx-assistant__text ccx-markdown">{{ block.get("text","") | markdown }}</div>
+        {# Agent summary row — always visible, click to expand #}
+        <details class="ccx-agent-details" open>
+          <summary class="ccx-agent-summary" onclick="return true;">
+            <span class="ccx-agent-summary__icon">🤖</span>
+            <span class="ccx-agent-summary__label">Agent Workflow ({{ all_steps|length }} step{% if all_steps|length > 1 %}s{% endif %})</span>
+            <span class="ccx-agent-summary__meta">
+              <span class="ccx-agent-summary__cost {{ cost_severity(ns_agent.cost) }}">{{ format_cost(ns_agent.cost) }}</span>
+              {% if ns_agent.duration > 0 %}<span class="ccx-agent-summary__dur">{{ format_duration(ns_agent.duration) }}</span>{% endif %}
+            </span>
+          </summary>
 
-          {% elif block.get("type") == "tool_use" %}
-          <div class="ccx-tool-tag">
-            <span class="ccx-tool-tag__name">🔧 {{ block.get("name","tool") }}</span>
-            <span class="ccx-tool-tag__arrow">→</span>
-            <span class="ccx-tool-tag__id">{{ block.get("id","")[:12] }}…</span>
+          {% if ns_agent.has_sub %}
+          <div class="ccx-agent-children">
+            {% for step in all_steps %}
+            {% set step_idx = loop.index0 %}
+
+            {# 1. Render incoming results for the very first step in the exchange (orphaned from previous exchange) #}
+            {% if loop.first %}
+              {% for tc in step.tool_calls %}
+              <div class="ccx-child-row ccx-child-row--result">
+                <div class="ccx-child-dot"></div>
+                <details class="ccx-child-details">
+                  <summary class="ccx-child-summary">
+                    <span class="ccx-child-icon">📥</span>
+                    <span class="ccx-child-label">Result: {{ tc.name }}</span>
+                    {% if tc.input and tc.input.get("file_path") %}<span class="ccx-child-path">{{ tc.input.get("file_path") }}</span>{% endif %}
+                  </summary>
+                  <div class="ccx-child-body">
+                    {% if tc.result_content %}
+                      {% for item in tc.result_content %}
+                        {% if item.get("type") == "text" %}<pre class="ccx-child-pre">{{ item.get("text","")[:600] }}{% if item.get("text","")|length > 600 %}…{% endif %}</pre>
+                        {% elif item.get("type") == "tool_reference" %}<div class="ccx-child-pre" style="color:var(--ccx-text-muted);">[tool_reference: {{ item.get("tool_name","") }}]</div>
+                        {% endif %}
+                      {% endfor %}
+                    {% else %}
+                    <div class="ccx-child-pre" style="color:var(--ccx-text-muted);">No result content</div>
+                    {% endif %}
+                  </div>
+                </details>
+              </div>
+              {% endfor %}
+            {% endif %}
+
+            {# 2. Assistant content IN ORIGINAL API ORDER, pulling Results to their Calls #}
+            {% set step_idx = loop.index0 %}
+            {% for block in step.assistant_content %}
+              {% if block.get("type") == "thinking" and block.get("thinking", "")|length > 0 %}
+              <div class="ccx-child-row ccx-child-row--thinking">
+                <div class="ccx-child-dot"></div>
+                <details class="ccx-child-details">
+                  <summary class="ccx-child-summary">
+                    <span class="ccx-child-icon">🧠</span>
+                    <span class="ccx-child-label">Thinking</span>
+                    <span class="ccx-child-chars">{{ block.get("thinking","")|length }} chars</span>
+                  </summary>
+                  <div class="ccx-child-body">{{ block.get("thinking","") }}</div>
+                </details>
+              </div>
+              {% elif block.get("type") == "tool_use" %}
+              <div class="ccx-child-row ccx-child-row--tool">
+                <div class="ccx-child-dot"></div>
+                <details class="ccx-child-details">
+                  <summary class="ccx-child-summary">
+                    <span class="ccx-child-icon">🔧</span>
+                    <span class="ccx-child-label">Call: {{ block.get("name", "tool") }}</span>
+                    <span class="ccx-child-id">{{ block.get("id","")[:12] }}…</span>
+                  </summary>
+                  <div class="ccx-child-body">
+                    <pre class="ccx-child-pre">{{ block.get("input", {}) | tojson(indent=2) }}</pre>
+                  </div>
+                </details>
+              </div>
+
+              {# 3. IMMEDIATELY find and render the matching result from the next step! #}
+              {% if step_idx + 1 < all_steps|length %}
+                {% for tc in all_steps[step_idx + 1].tool_calls %}
+                  {% if tc.tool_use_id == block.get("id") %}
+                  <div class="ccx-child-row ccx-child-row--result">
+                    <div class="ccx-child-dot"></div>
+                    <details class="ccx-child-details">
+                      <summary class="ccx-child-summary">
+                        <span class="ccx-child-icon">📥</span>
+                        <span class="ccx-child-label">Result: {{ tc.name }}</span>
+                        {% if tc.input and tc.input.get("file_path") %}<span class="ccx-child-path">{{ tc.input.get("file_path") }}</span>{% endif %}
+                      </summary>
+                      <div class="ccx-child-body">
+                        {% if tc.result_content %}
+                          {% for item in tc.result_content %}
+                            {% if item.get("type") == "text" %}<pre class="ccx-child-pre">{{ item.get("text","")[:600] }}{% if item.get("text","")|length > 600 %}…{% endif %}</pre>
+                            {% elif item.get("type") == "tool_reference" %}<div class="ccx-child-pre" style="color:var(--ccx-text-muted);">[tool_reference: {{ item.get("tool_name","") }}]</div>
+                            {% endif %}
+                          {% endfor %}
+                        {% else %}
+                        <div class="ccx-child-pre" style="color:var(--ccx-text-muted);">No result content</div>
+                        {% endif %}
+                      </div>
+                    </details>
+                  </div>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+
+              {% endif %}
+            {% endfor %}
+
+            {% endfor %}
           </div>
           {% endif %}
-        {% endfor %}
+
+        </details>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Final Response Bubble ── #}
+    {% set response_turn = ex.final_turn %}
+    {% if response_turn and response_turn.assistant_content %}
+      {% set text_blocks = response_turn.assistant_content | selectattr("type", "equalto", "text") | list %}
+      {% if text_blocks %}
+      <div class="ccx-exchange__response">
+        <div class="ccx-exchange__response-label">
+          <span class="ccx-exchange__role-dot ccx-exchange__role-dot--response"></span>
+          <span>Response</span>
+          <span class="ccx-exchange__response-meta">
+            <span class="ccx-badge ccx-badge--cost {{ 'cost-badge-' + cost_severity(response_turn.cost_usd).replace('cost-','') }}" style="margin-right: 8px;">{{ format_cost(response_turn.cost_usd) }}</span>
+            <span class="ccx-badge ccx-badge--model">{{ response_turn.model.replace("claude-","") }}</span>
+          </span>
+        </div>
+        <div class="ccx-exchange__response-body ccx-markdown">
+          {% for block in text_blocks %}{{ block.get("text", "") | markdown }}{% endfor %}
+        </div>
       </div>
       {% endif %}
+    {% endif %}
 
-      {# ── Turn Footer ── #}
-      <div class="ccx-turn__footer">
-        <span class="ccx-turn__footer-item">📥 {{ format_tokens(turn.usage.get("input_tokens", 0)) }}</span>
-        <span class="ccx-turn__footer-item">📤 {{ format_tokens(turn.usage.get("output_tokens", 0)) }}</span>
-        {% if turn.usage.get("cache_creation_input_tokens", 0) %}
-        <span class="ccx-turn__footer-item">✍ {{ format_tokens(turn.usage.get("cache_creation_input_tokens", 0)) }}</span>
-        {% endif %}
-        {% if turn.usage.get("cache_read_input_tokens", 0) %}
-        <span class="ccx-turn__footer-item">📋 {{ format_tokens(turn.usage.get("cache_read_input_tokens", 0)) }}</span>
-        {% endif %}
-        <a class="ccx-turn__footer-link" href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}">View full turn →</a>
-      </div>
-
-    </div>
   </div>
   {% endfor %}
 </div>
+
+{# ═══ Hidden modal data blocks for each turn ═══ #}
+{% for turn in session.turns %}
+<div class="ccx-modal-content" id="modal-{{ turn.uuid }}" style="display:none;">
+  <div class="ccx-modal__header">
+    <div class="ccx-modal__header-top">
+      <span class="ccx-badge ccx-badge--model">{{ turn.model.replace("claude-","") }}</span>
+      <span class="ccx-modal__time">{{ turn.timestamp[:19].replace("T", " ") }}</span>
+      <span class="ccx-modal__spacer"></span>
+      {% if turn.duration_seconds %}
+      <span class="ccx-modal__dur">⏱ {{ format_duration(turn.duration_seconds) }}</span>
+      {% endif %}
+      <span class="ccx-badge ccx-badge--cost {{ 'cost-badge-' + cost_severity(turn.cost_usd).replace('cost-','') }}">{{ format_cost(turn.cost_usd) }}</span>
+    </div>
+    <div class="ccx-modal__tokens">
+      <span>📥 {{ format_tokens(turn.usage.get("input_tokens", 0)) }}</span>
+      <span>📤 {{ format_tokens(turn.usage.get("output_tokens", 0)) }}</span>
+      {% if turn.usage.get("cache_creation_input_tokens", 0) %}
+      <span>✍ {{ format_tokens(turn.usage.get("cache_creation_input_tokens", 0)) }}</span>
+      {% endif %}
+      {% if turn.usage.get("cache_read_input_tokens", 0) %}
+      <span>📋 {{ format_tokens(turn.usage.get("cache_read_input_tokens", 0)) }}</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if turn.user_prompt_full or turn.user_prompt %}
+  <div class="ccx-modal__section">
+    <div class="ccx-modal__section-label">👤 User</div>
+    <div class="ccx-markdown">{{ (turn.user_prompt_full or turn.user_prompt) | markdown }}</div>
+  </div>
+  {% endif %}
+
+  {% if turn.tool_calls %}
+  <div class="ccx-modal__section">
+    <div class="ccx-modal__section-label">🔧 Tool Results</div>
+    {% for tc in turn.tool_calls %}
+    <details class="ccx-modal__tool">
+      <summary>
+        <span class="ccx-modal__tool-name">{{ tc.name }}</span>
+        {% if tc.input and tc.input.get("file_path") %}<span class="ccx-modal__tool-path">{{ tc.input.get("file_path") }}</span>{% endif %}
+        <span class="ccx-modal__tool-id">{{ tc.tool_use_id[:12] }}…</span>
+      </summary>
+      <div class="ccx-modal__tool-body">
+        {% if tc.input %}
+        <div class="ccx-modal__tool-label">Input</div>
+        <pre class="ccx-modal__pre">{{ tc.input | tojson(indent=2) }}</pre>
+        {% endif %}
+        {% if tc.result_content %}
+        <div class="ccx-modal__tool-label">Result</div>
+        {% for item in tc.result_content %}
+          {% if item.get("type") == "text" %}<pre class="ccx-modal__pre">{{ item.get("text","") }}</pre>
+          {% elif item.get("type") == "tool_reference" %}<div class="ccx-modal__pre" style="color:var(--ccx-text-muted);">[tool_reference: {{ item.get("tool_name","") }}]</div>
+          {% else %}<pre class="ccx-modal__pre">{{ item | tojson(indent=2) }}</pre>
+          {% endif %}
+        {% endfor %}
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if turn.assistant_content %}
+  <div class="ccx-modal__section">
+    <div class="ccx-modal__section-label">🤖 Assistant</div>
+    {% for block in turn.assistant_content %}
+      {% if block.get("type") == "thinking" and block.get("thinking", "")|length > 0 %}
+      <details class="ccx-modal__thinking">
+        <summary>Thinking ({{ block.get("thinking","")|length|string }} chars)</summary>
+        <div class="ccx-modal__thinking-content">{{ block.get("thinking","") }}</div>
+      </details>
+      {% elif block.get("type") == "text" %}
+      <div class="ccx-markdown" style="margin:8px 0;">{{ block.get("text","") | markdown }}</div>
+      {% elif block.get("type") == "tool_use" %}
+      <div class="ccx-modal__tool-tag">
+        🔧 <span style="color:var(--ccx-tool-text);font-weight:600;">{{ block.get("name","tool") }}</span>
+        <span style="color:var(--ccx-text-muted);font-size:11px;">→ {{ block.get("id","")[:12] }}…</span>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="ccx-modal__footer">
+    <a href="/session/{{ session.session_id }}/turn/{{ turn.uuid }}" class="ccx-modal__full-link">View full turn page →</a>
+  </div>
+</div>
+{% endfor %}
+
+{# ═══ Modal Overlay Shell ═══ #}
+<div class="ccx-modal-overlay" id="ccx-modal-overlay" onclick="closeTurnModal(event)">
+  <div class="ccx-modal-panel" id="ccx-modal-panel" onclick="event.stopPropagation()">
+    <button class="ccx-modal__close" onclick="closeTurnModal()" title="Close (Esc)">✕</button>
+    <div class="ccx-modal__body" id="ccx-modal-body"></div>
+  </div>
+</div>
+
+<script>
+function openTurnModal(contentId) {
+  const source = document.getElementById(contentId);
+  if (!source) return;
+  const body = document.getElementById('ccx-modal-body');
+  body.innerHTML = source.innerHTML;
+  document.getElementById('ccx-modal-overlay').classList.add('ccx-modal-overlay--open');
+  document.body.style.overflow = 'hidden';
+}
+function closeTurnModal(e) {
+  if (e && e.target !== document.getElementById('ccx-modal-overlay')) return;
+  document.getElementById('ccx-modal-overlay').classList.remove('ccx-modal-overlay--open');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeTurnModal();
+});
+</script>
 {% endblock %}
