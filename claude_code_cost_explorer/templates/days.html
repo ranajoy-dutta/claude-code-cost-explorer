@@ -1,12 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Claude Code Cost Explorer — Daily Summary{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+<style>
+  /* Flatpickr Premium CCX Theme Overrides */
+  .flatpickr-calendar.dark {
+    background: var(--ccx-surface);
+    border: 1px solid var(--ccx-border);
+    box-shadow: 0 16px 32px rgba(0,0,0,0.4);
+    font-family: 'Inter', sans-serif;
+  }
+  .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange, .flatpickr-day.selected.inRange, .flatpickr-day.startRange.inRange, .flatpickr-day.endRange.inRange, .flatpickr-day.selected:focus, .flatpickr-day.startRange:focus, .flatpickr-day.endRange:focus, .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover, .flatpickr-day.selected.prevMonthDay, .flatpickr-day.startRange.prevMonthDay, .flatpickr-day.endRange.prevMonthDay, .flatpickr-day.selected.nextMonthDay, .flatpickr-day.startRange.nextMonthDay, .flatpickr-day.endRange.nextMonthDay {
+    background: var(--ccx-accent) !important;
+    border-color: var(--ccx-accent) !important;
+    color: #fff !important;
+  }
+  .flatpickr-day:hover {
+    background: var(--ccx-surface-hover) !important;
+    border-color: var(--ccx-border) !important;
+  }
+  .ccx-date-input {
+    background: var(--ccx-bg);
+    border: 1px solid var(--ccx-border);
+    color: var(--ccx-text);
+    padding: 6px 12px;
+    border-radius: var(--ccx-radius);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color var(--ccx-transition), box-shadow var(--ccx-transition);
+  }
+  .ccx-date-input:focus {
+    border-color: var(--ccx-accent);
+    box-shadow: 0 0 0 2px var(--ccx-glow);
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+{% endblock %}
 {% block content %}
 <h2>Daily Cost Summary</h2>
 <form class="ccx-filter" method="get" action="/">
   <label for="from">From</label>
-  <input type="date" id="from" name="from" value="{{ from_date }}">
+  <input type="text" class="ccx-date-input" id="from" name="from" value="{{ from_date }}" placeholder="YYYY-MM-DD">
   <label for="to">To</label>
-  <input type="date" id="to" name="to" value="{{ to_date }}">
+  <input type="text" class="ccx-date-input" id="to" name="to" value="{{ to_date }}" placeholder="YYYY-MM-DD">
   <button class="ccx-filter__btn" type="submit">Filter</button>
   {% if from_date or to_date %}<a class="ccx-filter__clear" href="/">Clear</a>{% endif %}
 </form>
@@ -56,4 +95,29 @@
 {% else %}
 <div class="ccx-empty">No data found for the selected date range.</div>
 {% endif %}
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const commonConfig = {
+      theme: "dark",
+      dateFormat: "Y-m-d",
+      allowInput: true,
+      disableMobile: "true"
+    };
+
+    const fromPicker = flatpickr("#from", {
+      ...commonConfig,
+      onChange: function(selectedDates, dateStr) {
+        toPicker.set('minDate', dateStr);
+      }
+    });
+
+    const toPicker = flatpickr("#to", {
+      ...commonConfig,
+      onChange: function(selectedDates, dateStr) {
+        fromPicker.set('maxDate', dateStr);
+      }
+    });
+  });
+</script>
 {% endblock %}
