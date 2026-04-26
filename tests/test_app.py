@@ -31,6 +31,9 @@ class TestDayView:
     def test_200(self, client):
         assert client.get("/").status_code == 200
 
+    def test_contains_favicon(self, client):
+        assert b'rel="icon"' in client.get("/").data
+
     def test_contains_date(self, client):
         assert b"2025-10-25" in client.get("/").data
 
