@@ -5,49 +5,313 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
 <style>
-  /* Flatpickr Premium CCX Theme Overrides */
+  /* ── Flatpickr dark theme overrides ── */
   .flatpickr-calendar.dark {
     background: var(--ccx-surface);
     border: 1px solid var(--ccx-border);
-    box-shadow: 0 16px 32px rgba(0,0,0,0.4);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(124,92,255,0.08);
     font-family: 'Inter', sans-serif;
+    border-radius: 10px;
   }
-  .flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange, .flatpickr-day.selected.inRange, .flatpickr-day.startRange.inRange, .flatpickr-day.endRange.inRange, .flatpickr-day.selected:focus, .flatpickr-day.startRange:focus, .flatpickr-day.endRange:focus, .flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover, .flatpickr-day.selected.prevMonthDay, .flatpickr-day.startRange.prevMonthDay, .flatpickr-day.endRange.prevMonthDay, .flatpickr-day.selected.nextMonthDay, .flatpickr-day.startRange.nextMonthDay, .flatpickr-day.endRange.nextMonthDay {
-    background: var(--ccx-accent) !important;
-    border-color: var(--ccx-accent) !important;
-    color: #fff !important;
+  .flatpickr-months { padding: 4px 0; }
+  .flatpickr-month { color: var(--ccx-text); }
+  .flatpickr-current-month .flatpickr-monthDropdown-months,
+  .flatpickr-current-month input.cur-year {
+    color: var(--ccx-text) !important;
+    font-weight: 600;
+  }
+  .flatpickr-weekday { color: var(--ccx-text-muted) !important; font-weight: 500; }
+  .flatpickr-day {
+    color: var(--ccx-text-secondary);
+    border-radius: 6px !important;
   }
   .flatpickr-day:hover {
     background: var(--ccx-surface-hover) !important;
-    border-color: var(--ccx-border) !important;
+    border-color: transparent !important;
   }
-  .ccx-date-input {
-    background: var(--ccx-bg);
+  .flatpickr-day.inRange {
+    background: rgba(124,92,255,0.12) !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: var(--ccx-accent-soft) !important;
+  }
+  .flatpickr-day.selected,
+  .flatpickr-day.startRange,
+  .flatpickr-day.endRange,
+  .flatpickr-day.selected:hover,
+  .flatpickr-day.startRange:hover,
+  .flatpickr-day.endRange:hover {
+    background: var(--ccx-accent) !important;
+    border-color: var(--ccx-accent) !important;
+    color: #fff !important;
+    box-shadow: 0 0 0 2px rgba(124,92,255,0.3) !important;
+  }
+  .flatpickr-day.flatpickr-disabled,
+  .flatpickr-day.prevMonthDay,
+  .flatpickr-day.nextMonthDay {
+    color: var(--ccx-text-muted) !important;
+    opacity: 0.4;
+  }
+  .flatpickr-day.today {
+    border-color: rgba(124,92,255,0.35) !important;
+  }
+  .flatpickr-day.today:hover {
+    background: rgba(124,92,255,0.15) !important;
+  }
+
+  /* ── Date Range Chip ── */
+  .ccx-range-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .ccx-range-chip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    height: 36px;
+    padding: 0 10px 0 12px;
+    background: var(--ccx-surface);
     border: 1px solid var(--ccx-border);
-    color: var(--ccx-text);
-    padding: 6px 12px;
-    border-radius: var(--ccx-radius);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    outline: none;
-    transition: border-color var(--ccx-transition), box-shadow var(--ccx-transition);
+    border-radius: 100px;
+    cursor: pointer;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      background 0.2s ease;
+    min-width: 240px;
+    max-width: 360px;
+    user-select: none;
   }
-  .ccx-date-input:focus {
+  .ccx-range-chip:hover {
+    border-color: rgba(124,92,255,0.4);
+    background: var(--ccx-surface-hover);
+  }
+  .ccx-range-chip.is-open,
+  .ccx-range-chip.is-active {
     border-color: var(--ccx-accent);
-    box-shadow: 0 0 0 2px var(--ccx-glow);
+    box-shadow: 0 0 0 3px rgba(124,92,255,0.12), 0 4px 16px rgba(0,0,0,0.3);
+    background: rgba(124,92,255,0.04);
+  }
+
+  .ccx-range-chip__icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--ccx-text-muted);
+    margin-right: 8px;
+    transition: color 0.2s ease;
+  }
+  .ccx-range-chip.is-active .ccx-range-chip__icon,
+  .ccx-range-chip.is-open .ccx-range-chip__icon {
+    color: var(--ccx-accent-soft);
+  }
+
+  .ccx-range-chip__label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ccx-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-right: 8px;
+    flex-shrink: 0;
+    transition: color 0.2s ease;
+  }
+  .ccx-range-chip.is-active .ccx-range-chip__label {
+    color: var(--ccx-accent-soft);
+  }
+
+  .ccx-range-chip__dates {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .ccx-range-chip__date {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--ccx-text);
+    white-space: nowrap;
+    transition: color 0.2s ease;
+  }
+  .ccx-range-chip__date.is-placeholder {
+    color: var(--ccx-text-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  .ccx-range-chip__arrow {
+    display: flex;
+    align-items: center;
+    color: var(--ccx-text-muted);
+    flex-shrink: 0;
+    opacity: 0.6;
+  }
+
+  /* Hidden real input that flatpickr attaches to */
+  .ccx-range-chip__input {
+    position: absolute;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    pointer-events: none;
+    border: none;
+  }
+
+  /* Clear × button */
+  .ccx-range-chip__clear {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    color: var(--ccx-text-muted);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    margin-left: 6px;
+    flex-shrink: 0;
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .ccx-range-chip__clear:hover {
+    background: rgba(239,68,68,0.15);
+    color: #EF4444;
+  }
+  .ccx-range-chip.is-active .ccx-range-chip__clear {
+    display: inline-flex;
+  }
+
+  /* Subtle "loading" shimmer when form auto-submits */
+  @keyframes ccx-chip-pulse {
+    0%   { opacity: 1; }
+    50%  { opacity: 0.5; }
+    100% { opacity: 1; }
+  }
+  .ccx-range-chip.is-submitting {
+    animation: ccx-chip-pulse 0.8s ease infinite;
+    pointer-events: none;
+  }
+
+  /* ── Preset shortcut pills ── */
+  .ccx-presets {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .ccx-presets__sep {
+    width: 1px;
+    height: 16px;
+    background: var(--ccx-border);
+    margin: 0 6px;
+    flex-shrink: 0;
+  }
+  .ccx-preset {
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 100px;
+    border: 1px solid var(--ccx-border);
+    background: transparent;
+    color: var(--ccx-text-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      color 0.15s ease,
+      border-color 0.15s ease,
+      background 0.15s ease;
+    user-select: none;
+  }
+  .ccx-preset:hover {
+    color: var(--ccx-accent-soft);
+    border-color: rgba(124,92,255,0.4);
+    background: rgba(124,92,255,0.06);
+  }
+  .ccx-preset.is-active {
+    color: var(--ccx-accent-soft);
+    border-color: var(--ccx-accent);
+    background: rgba(124,92,255,0.1);
+    font-weight: 600;
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 {% endblock %}
 {% block content %}
 <h2>Daily Cost Summary</h2>
-<form class="ccx-filter" method="get" action="/">
-  <label for="from">From</label>
-  <input type="text" class="ccx-date-input" id="from" name="from" value="{{ from_date }}" placeholder="YYYY-MM-DD">
-  <label for="to">To</label>
-  <input type="text" class="ccx-date-input" id="to" name="to" value="{{ to_date }}" placeholder="YYYY-MM-DD">
-  <button class="ccx-filter__btn" type="submit">Filter</button>
-  {% if from_date or to_date %}<a class="ccx-filter__clear" href="/">Clear</a>{% endif %}
+<form id="ccx-filter-form" method="get" action="/">
+  <input type="hidden" name="sort" value="{{ sort_by }}">
+  <input type="hidden" name="order" value="{{ sort_order }}">
+  <input type="hidden" id="from" name="from" value="{{ from_date }}">
+  <input type="hidden" id="to" name="to" value="{{ to_date }}">
+
+  <div class="ccx-range-wrap">
+    <!-- The pill chip ─────────────────────────────────── -->
+    <div class="ccx-range-chip{% if from_date or to_date %} is-active{% endif %}" id="ccx-chip" title="Click to pick a date range">
+      <!-- Hidden real text input flatpickr attaches to -->
+      <input
+        type="text"
+        class="ccx-range-chip__input"
+        id="date-range"
+        autocomplete="off"
+        value="{% if from_date and to_date %}{{ from_date }} to {{ to_date }}{% elif from_date %}{{ from_date }}{% elif to_date %}{{ to_date }}{% endif %}"
+      >
+
+      <!-- Calendar icon -->
+      <span class="ccx-range-chip__icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+      </span>
+
+      <!-- Date display -->
+      <div class="ccx-range-chip__dates" id="chip-display">
+        {% if from_date and to_date %}
+          <span class="ccx-range-chip__date" id="chip-from">{{ from_date }}</span>
+          <span class="ccx-range-chip__arrow">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </span>
+          <span class="ccx-range-chip__date" id="chip-to">{{ to_date }}</span>
+        {% elif from_date %}
+          <span class="ccx-range-chip__date" id="chip-from">{{ from_date }}</span>
+          <span class="ccx-range-chip__arrow" style="opacity:0.3">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </span>
+          <span class="ccx-range-chip__date is-placeholder" id="chip-to">end…</span>
+        {% else %}
+          <span class="ccx-range-chip__date is-placeholder" id="chip-placeholder">All time</span>
+        {% endif %}
+      </div>
+
+      <!-- Inline × clear -->
+      <a class="ccx-range-chip__clear" id="chip-clear" href="/?sort={{ sort_by }}&order={{ sort_order }}" title="Clear date filter">×</a>
+    </div>
+
+    <!-- Preset shortcut pills ──────────────────────── -->
+    <div class="ccx-presets">
+      <div class="ccx-presets__sep" aria-hidden="true"></div>
+      <button type="button" class="ccx-preset" data-preset="today">Today</button>
+      <button type="button" class="ccx-preset" data-preset="yesterday">Yesterday</button>
+      <button type="button" class="ccx-preset" data-preset="7d">7d</button>
+      <button type="button" class="ccx-preset" data-preset="30d">30d</button>
+      <button type="button" class="ccx-preset" data-preset="all">All</button>
+    </div>
+  </div>
 </form>
 {% if days %}
 <div class="ccx-metrics">
@@ -71,12 +335,24 @@
 <div class="ccx-card">
   <table class="ccx-table">
     <thead><tr>
-      <th>Date</th>
-      <th>Cost</th>
-      <th>Sessions</th>
-      <th>API Calls</th>
-      <th>Input Tokens</th>
-      <th>Output Tokens</th>
+      <th aria-sort="{% if sort_by == 'date' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'date' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_view', 'date', sort_by, sort_order) }}">Date<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'cost' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'cost' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_view', 'cost', sort_by, sort_order) }}">Cost<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'sessions' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'sessions' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_view', 'sessions', sort_by, sort_order) }}">Sessions<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'calls' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'calls' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_view', 'calls', sort_by, sort_order) }}">API Calls<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'input' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'input' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_view', 'input', sort_by, sort_order) }}">Input Tokens<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'output' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'output' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_view', 'output', sort_by, sort_order) }}">Output Tokens<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
     </tr></thead>
     <tbody>
       {% for day in days %}
@@ -97,25 +373,114 @@
 {% endif %}
 
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
-    const commonConfig = {
-      theme: "dark",
-      dateFormat: "Y-m-d",
-      allowInput: true,
-      disableMobile: "true"
-    };
+  document.addEventListener('DOMContentLoaded', function () {
+    const form       = document.getElementById('ccx-filter-form');
+    const fromInput  = document.getElementById('from');
+    const toInput    = document.getElementById('to');
+    const hiddenPick = document.getElementById('date-range');
+    const chip       = document.getElementById('ccx-chip');
 
-    const fromPicker = flatpickr("#from", {
-      ...commonConfig,
-      onChange: function(selectedDates, dateStr) {
-        toPicker.set('minDate', dateStr);
+    // ── Helpers ───────────────────────────────────────────
+    function fmtDate(d) {
+      return d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+    }
+    function offsetDate(d, days) {
+      const r = new Date(d);
+      r.setDate(r.getDate() + days);
+      return r;
+    }
+
+    // Compute the from/to strings each preset resolves to (as of today)
+    function presetDates(key) {
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      switch (key) {
+        case 'today':     return { from: fmtDate(today),              to: fmtDate(today) };
+        case 'yesterday': return { from: fmtDate(offsetDate(today,-1)), to: fmtDate(offsetDate(today,-1)) };
+        case '7d':        return { from: fmtDate(offsetDate(today,-6)), to: fmtDate(today) };
+        case '30d':       return { from: fmtDate(offsetDate(today,-29)),to: fmtDate(today) };
+        case 'all':       return { from: '',                            to: '' };
+        default:          return null;
+      }
+    }
+
+    // ── Chip display ─────────────────────────────────────
+    function updateChipDisplay(from, to) {
+      const display = document.getElementById('chip-display');
+      if (!from && !to) {
+        display.innerHTML = '<span class="ccx-range-chip__date is-placeholder" id="chip-placeholder">All time</span>';
+        chip.classList.remove('is-active');
+      } else {
+        chip.classList.add('is-active');
+        const arrowSvg = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>`;
+        const toStr = to
+          ? `<span class="ccx-range-chip__arrow">${arrowSvg}</span><span class="ccx-range-chip__date" id="chip-to">${to}</span>`
+          : `<span class="ccx-range-chip__arrow" style="opacity:0.3">${arrowSvg}</span><span class="ccx-range-chip__date is-placeholder" id="chip-to">end…</span>`;
+        display.innerHTML = `<span class="ccx-range-chip__date" id="chip-from">${from}</span>` + toStr;
+      }
+    }
+
+    // ── Preset highlighting ──────────────────────────────
+    const currentFrom = fromInput.value;
+    const currentTo   = toInput.value;
+    document.querySelectorAll('.ccx-preset').forEach(function (btn) {
+      const key = btn.dataset.preset;
+      const pd  = presetDates(key);
+      if (pd && pd.from === currentFrom && pd.to === currentTo) {
+        btn.classList.add('is-active');
+      }
+      // Special case: 'all' is active when both are empty
+      if (key === 'all' && !currentFrom && !currentTo) {
+        btn.classList.add('is-active');
       }
     });
 
-    const toPicker = flatpickr("#to", {
-      ...commonConfig,
-      onChange: function(selectedDates, dateStr) {
-        fromPicker.set('maxDate', dateStr);
+    // ── Preset click ────────────────────────────────────
+    document.querySelectorAll('.ccx-preset').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const pd = presetDates(btn.dataset.preset);
+        if (!pd) return;
+        fromInput.value = pd.from;
+        toInput.value   = pd.to;
+        updateChipDisplay(pd.from, pd.to);
+        // Sync flatpickr display
+        if (pd.from && pd.to) {
+          fp.setDate([pd.from, pd.to], false);
+        } else {
+          fp.clear(false);
+        }
+        chip.classList.add('is-submitting');
+        form.submit();
+      });
+    });
+
+    // ── Calendar chip click ──────────────────────────────
+    chip.addEventListener('click', function (e) {
+      if (e.target.closest('#chip-clear')) return;
+      fp.open();
+    });
+
+    // ── Flatpickr ────────────────────────────────────────
+    const fp = flatpickr(hiddenPick, {
+      theme: 'dark',
+      mode: 'range',
+      dateFormat: 'Y-m-d',
+      disableMobile: true,
+      defaultDate: [fromInput.value, toInput.value].filter(Boolean),
+      onOpen:  function () { chip.classList.add('is-open'); },
+      onClose: function () { chip.classList.remove('is-open'); },
+      onChange: function (selectedDates) {
+        const from = selectedDates[0] ? fmtDate(selectedDates[0]) : '';
+        const to   = selectedDates[1] ? fmtDate(selectedDates[1]) : '';
+        fromInput.value = from;
+        toInput.value   = to;
+        updateChipDisplay(from, to);
+        if (selectedDates.length === 2) {
+          chip.classList.add('is-submitting');
+          form.submit();
+        }
       }
     });
   });
