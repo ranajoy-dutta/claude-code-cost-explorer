@@ -26,13 +26,27 @@
 <div class="ccx-card">
   <table class="ccx-table">
     <thead><tr>
-      <th>Session</th>
-      <th>Project</th>
-      <th>Cost</th>
-      <th>API Calls</th>
-      <th>Input Tokens</th>
-      <th>Output Tokens</th>
-      <th>Time</th>
+      <th aria-sort="{% if sort_by == 'session' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'session' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_sessions_view', 'session', sort_by, sort_order, date=date) }}">Session<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'project' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'project' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_sessions_view', 'project', sort_by, sort_order, date=date) }}">Project<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'cost' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'cost' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_sessions_view', 'cost', sort_by, sort_order, date=date) }}">Cost<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'calls' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'calls' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_sessions_view', 'calls', sort_by, sort_order, date=date) }}">API Calls<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'input' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'input' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_sessions_view', 'input', sort_by, sort_order, date=date) }}">Input Tokens<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'output' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'output' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_sessions_view', 'output', sort_by, sort_order, date=date) }}">Output Tokens<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
+      <th aria-sort="{% if sort_by == 'time' %}{% if sort_order == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}">
+        <a class="ccx-sort-link{% if sort_by == 'time' %} is-active is-{{ sort_order }}{% endif %}" href="{{ sort_url('day_sessions_view', 'time', sort_by, sort_order, date=date) }}">Time<span class="ccx-sort-caret" aria-hidden="true"></span></a>
+      </th>
     </tr></thead>
     <tbody>
       {% for session in sessions %}
