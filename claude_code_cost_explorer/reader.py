@@ -39,6 +39,7 @@ class Turn:
 @dataclass
 class SessionData:
     session_id: str
+    source_path: str
     project_path: str
     project_name: str
     title: str
@@ -105,15 +106,14 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
         r["uuid"] for r in records if r.get("type") == "assistant" and r.get("uuid")
     }
 
-    # Title: custom-title > ai-title > slug > fallback
+    # Title: latest custom-title > ai-title > slug > fallback
     title = None
     slug = None
     for r in records:
         rtype = r.get("type")
         if rtype == "custom-title" and r.get("customTitle"):
             title = r["customTitle"]
-            break
-        if rtype == "ai-title" and not title and r.get("aiTitle"):
+        elif rtype == "ai-title" and not title and r.get("aiTitle"):
             title = r["aiTitle"]
         if not slug and r.get("slug"):
             slug = r["slug"]
@@ -296,6 +296,7 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
 
     return SessionData(
         session_id=session_id,
+        source_path=jsonl_path,
         project_path=project_path,
         project_name=project_name,
         title=title,
@@ -368,3 +369,36 @@ def get_session_by_id(
     sessions: list[SessionData], session_id: str
 ) -> Optional[SessionData]:
     return next((s for s in sessions if s.session_id == session_id), None)
+
+
+def normalize_session_title(title: str) -> str:
+    return " ".join(title.strip().split())
+
+
+def append_custom_session_title(session: SessionData, title: str) -> str:
+    clean_title = normalize_session_title(title)
+    if not clean_title:
+        raise ValueError("Session name cannot be empty.")
+    if len(clean_title) > 160:
+        raise ValueError("Session name must be 160 characters or fewer.")
+    if not session.source_path:
+        raise ValueError("Session source file is unknown.")
+
+    expected_name = f"{session.session_id}.jsonl"
+    if os.path.basename(session.source_path) != expected_name:
+        raise ValueError("Session source file does not match the session id.")
+
+    record = {
+        "type": "custom-title",
+        "sessionId": session.session_id,
+        "customTitle": clean_title,
+    }
+    payload = json.dumps(record, ensure_ascii=False).encode("utf-8")
+    with open(session.source_path, "ab+") as f:
+        f.seek(0, os.SEEK_END)
+        if f.tell() > 0:
+            f.seek(-1, os.SEEK_END)
+            if f.read(1) != b"\n":
+                f.write(b"\n")
+        f.write(payload + b"\n")
+    return clean_title

@@ -12,9 +12,62 @@
 <a class="ccx-back" href="/day/{{ session.date }}">← Back to {{ session.date }}</a>
 
 <div class="ccx-session-info">
-  <div class="ccx-session-info__title">{{ session.title }}</div>
+  <div class="ccx-session-title-row">
+    <div class="ccx-session-info__title" id="ccx-session-title-view">
+      <span>{{ session.title }}</span>
+      <button type="button"
+              class="ccx-title-icon-btn ccx-title-icon-btn--edit"
+              onclick="openSessionTitleEditor()"
+              title="Edit session name"
+              aria-label="Edit session name">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 20h9"/>
+          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+        </svg>
+      </button>
+    </div>
+    <form class="ccx-session-title-form"
+          id="ccx-session-title-form"
+          method="post"
+          action="/session/{{ session.session_id }}"
+          hidden>
+      <input class="ccx-session-title-input"
+             id="ccx-session-title-input"
+             name="title"
+             value="{{ session.title }}"
+             maxlength="160"
+             required
+             aria-label="Session name">
+      <button type="submit"
+              class="ccx-title-icon-btn ccx-title-icon-btn--save"
+              title="Save session name"
+              aria-label="Save session name">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m20 6-11 11-5-5"/>
+        </svg>
+      </button>
+      <button type="button"
+              class="ccx-title-icon-btn"
+              onclick="closeSessionTitleEditor()"
+              title="Cancel"
+              aria-label="Cancel">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 6 6 18"/>
+          <path d="m6 6 12 12"/>
+        </svg>
+      </button>
+    </form>
+  </div>
   <div class="ccx-session-info__meta">
-    <span>{{ session.project_name }}</span> · {{ session.session_id[:8] }} · {{ session.message_count }} turns
+    <button type="button"
+            class="ccx-session-id-chip"
+            data-session-id="{{ session.session_id }}"
+            onclick="copySessionId(this)"
+            title="Copy full session ID"
+            aria-label="Copy full session ID">
+      <span class="ccx-session-id-chip__text">{{ session.session_id[:8] }}</span>
+    </button>
+    · {{ session.message_count }} turns
     {% if session.duration_seconds %} · {{ format_duration(session.duration_seconds) }}{% endif %}
   </div>
 </div>
@@ -341,5 +394,52 @@ function closeTurnModal(e) {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeTurnModal();
 });
+function openSessionTitleEditor() {
+  const view = document.getElementById('ccx-session-title-view');
+  const form = document.getElementById('ccx-session-title-form');
+  const input = document.getElementById('ccx-session-title-input');
+  if (!view || !form || !input) return;
+  view.hidden = true;
+  form.hidden = false;
+  window.setTimeout(function() {
+    input.focus();
+    input.select();
+  }, 0);
+}
+function closeSessionTitleEditor() {
+  const view = document.getElementById('ccx-session-title-view');
+  const form = document.getElementById('ccx-session-title-form');
+  const input = document.getElementById('ccx-session-title-input');
+  if (!view || !form || !input) return;
+  input.value = input.defaultValue;
+  form.hidden = true;
+  view.hidden = false;
+}
+const sessionTitleInput = document.getElementById('ccx-session-title-input');
+if (sessionTitleInput) {
+  sessionTitleInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeSessionTitleEditor();
+    }
+  });
+}
+function copySessionId(chip) {
+  const id = chip.dataset.sessionId;
+  const label = chip.querySelector('.ccx-session-id-chip__text');
+  const original = chip.dataset.shortId || label.textContent;
+  chip.dataset.shortId = original;
+
+  navigator.clipboard.writeText(id).then(function() {
+    window.clearTimeout(chip.copyResetTimer);
+    label.textContent = 'Copied!';
+    chip.classList.add('ccx-session-id-chip--copied');
+    chip.copyResetTimer = window.setTimeout(function() {
+      label.textContent = original;
+      chip.classList.remove('ccx-session-id-chip--copied');
+    }, 1400);
+  });
+}
+
 </script>
 {% endblock %}

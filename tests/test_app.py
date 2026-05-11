@@ -1,4 +1,5 @@
 import os
+from datetime import date
 from dataclasses import replace
 
 import pytest
@@ -33,6 +34,14 @@ def client(mock_sessions, monkeypatch):
 class TestDayView:
     def test_200(self, client):
         assert client.get("/?from=2025-10-01").status_code == 200
+
+    def test_default_month_filter_matches_30_day_preset(self):
+        from claude_code_cost_explorer.app import _default_date_range
+
+        assert _default_date_range(date(2025, 11, 30)) == (
+            "2025-11-01",
+            "2025-11-30",
+        )
 
     def test_redirects_to_default_month_filter(self, client, monkeypatch):
         import claude_code_cost_explorer.app as flask_app
@@ -151,3 +160,40 @@ class TestSessionDetailView:
     def test_model_name_shown(self, client, mock_sessions):
         resp = client.get(f"/session/{mock_sessions[0].session_id}")
         assert b"sonnet-4-6" in resp.data
+
+    def test_session_id_chip_copies_full_id(self, client, mock_sessions):
+        resp = client.get(f"/session/{mock_sessions[0].session_id}")
+        html = resp.get_data(as_text=True)
+
+        assert f'data-session-id="{mock_sessions[0].session_id}"' in html
+        assert mock_sessions[0].session_id[:8] in html
+        assert "copySessionId(this)" in html
+        assert "Copied!" in html
+
+    def test_session_title_edit_ui_shown(self, client, mock_sessions):
+        resp = client.get(f"/session/{mock_sessions[0].session_id}")
+        html = resp.get_data(as_text=True)
+
+        assert f'action="/session/{mock_sessions[0].session_id}"' in html
+        assert 'name="title"' in html
+        assert "openSessionTitleEditor()" in html
+
+    def test_session_title_update_redirects(self, client, mock_sessions, monkeypatch):
+        calls = []
+
+        def fake_append_title(session, title):
+            calls.append((session.session_id, title))
+            return title
+
+        monkeypatch.setattr(
+            "claude_code_cost_explorer.app.append_custom_session_title",
+            fake_append_title,
+        )
+        resp = client.post(
+            f"/session/{mock_sessions[0].session_id}",
+            data={"title": "Renamed session"},
+        )
+
+        assert resp.status_code == 302
+        assert resp.headers["Location"] == f"/session/{mock_sessions[0].session_id}"
+        assert calls == [(mock_sessions[0].session_id, "Renamed session")]
