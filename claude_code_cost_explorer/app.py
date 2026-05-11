@@ -1,12 +1,13 @@
 """Claude Code Cost Tracker. Run: ccx"""
 
-from flask import Flask, render_template, request, abort, url_for, redirect
+from flask import Flask, render_template, request, abort, redirect, url_for
 from claude_code_cost_explorer.reader import (
     load_all_sessions as _load_all_sessions,
     build_day_summaries,
     get_sessions_for_date,
     get_session_by_id,
     CLAUDE_DIR,
+    append_custom_session_title,
 )
 
 import os
@@ -239,7 +240,7 @@ DEFAULT_LOOKBACK_DAYS = 30
 def _default_date_range(today: date | None = None) -> tuple[str, str]:
     today = today or date.today()
     return (
-        (today - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat(),
+        (today - timedelta(days=DEFAULT_LOOKBACK_DAYS - 1)).isoformat(),
         today.isoformat(),
     )
 
@@ -300,12 +301,20 @@ def day_sessions_view(date):
     )
 
 
-@app.route("/session/<session_id>")
+@app.route("/session/<session_id>", methods=["GET", "POST"])
 def session_detail_view(session_id):
     sessions = load_all_sessions()
     session = get_session_by_id(sessions, session_id)
     if not session:
         abort(404)
+    if request.method == "POST":
+        try:
+            append_custom_session_title(session, request.form.get("title", ""))
+        except ValueError as exc:
+            abort(400, description=str(exc))
+        except OSError:
+            abort(500)
+        return redirect(url_for("session_detail_view", session_id=session_id))
     exchanges = _build_exchanges(session.turns)
     return render_template("session.html", session=session, exchanges=exchanges)
 

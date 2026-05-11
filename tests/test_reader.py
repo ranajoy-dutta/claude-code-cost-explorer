@@ -1,5 +1,7 @@
 import os
+import shutil
 from claude_code_cost_explorer.reader import (
+    append_custom_session_title,
     parse_session_file,
     build_day_summaries,
     get_session_by_id,
@@ -75,6 +77,39 @@ class TestParseSessionFile:
             os.path.join(FIXTURES, "session_with_title.jsonl"), "/tmp"
         )
         assert s.title == "Deploy pipeline fix"
+
+    def test_latest_custom_title_wins(self, tmp_path):
+        source = os.path.join(FIXTURES, "session_with_title.jsonl")
+        target = tmp_path / "session_with_title.jsonl"
+        shutil.copyfile(source, target)
+        with open(target, "a", encoding="utf-8") as f:
+            f.write(
+                '{"type":"custom-title","sessionId":"session_with_title",'
+                '"customTitle":"Latest title"}\n'
+            )
+
+        s = parse_session_file(str(target), "/tmp")
+        assert s.title == "Latest title"
+
+    def test_source_path_stored(self):
+        path = os.path.join(FIXTURES, "session_simple.jsonl")
+        s = parse_session_file(path, "/tmp")
+        assert s.source_path == path
+
+    def test_append_custom_session_title_preserves_metrics(self, tmp_path):
+        source = os.path.join(FIXTURES, "session_simple.jsonl")
+        target = tmp_path / "session_simple.jsonl"
+        shutil.copyfile(source, target)
+        before = parse_session_file(str(target), "/tmp")
+
+        written_title = append_custom_session_title(before, "  Renamed session  ")
+        after = parse_session_file(str(target), "/tmp")
+
+        assert written_title == "Renamed session"
+        assert after.title == "Renamed session"
+        assert after.session_id == before.session_id
+        assert after.message_count == before.message_count
+        assert after.total_cost == before.total_cost
 
     def test_date_from_timestamp(self):
         s = parse_session_file(os.path.join(FIXTURES, "session_simple.jsonl"), "/tmp")

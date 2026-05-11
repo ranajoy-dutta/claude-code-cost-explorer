@@ -415,16 +415,144 @@
     .ccx-session-info {
       margin-bottom: 20px;
     }
+    .ccx-session-title-row {
+      min-height: 32px;
+      margin-bottom: 4px;
+    }
     .ccx-session-info__title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       font-size: 20px;
       font-weight: 700;
-      margin-bottom: 4px;
+      line-height: 1.25;
+    }
+    .ccx-title-icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      color: var(--ccx-text-muted);
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--ccx-radius);
+      cursor: pointer;
+      transition:
+        color var(--ccx-transition),
+        background var(--ccx-transition),
+        border-color var(--ccx-transition),
+        opacity var(--ccx-transition);
+    }
+    .ccx-title-icon-btn svg {
+      width: 15px;
+      height: 15px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .ccx-title-icon-btn:hover,
+    .ccx-title-icon-btn:focus-visible {
+      color: var(--ccx-accent-soft);
+      background: var(--ccx-glow);
+      border-color: rgba(124, 92, 255, 0.35);
+    }
+    .ccx-title-icon-btn:focus-visible {
+      outline: 2px solid rgba(167, 139, 250, 0.35);
+      outline-offset: 2px;
+    }
+    .ccx-title-icon-btn--edit {
+      opacity: 0;
+    }
+    .ccx-session-info:hover .ccx-title-icon-btn--edit,
+    .ccx-title-icon-btn--edit:focus-visible {
+      opacity: 1;
+    }
+    .ccx-title-icon-btn--save:hover,
+    .ccx-title-icon-btn--save:focus-visible {
+      color: var(--ccx-cost-low);
+      background: rgba(74, 222, 128, 0.10);
+      border-color: rgba(74, 222, 128, 0.35);
+    }
+    .ccx-session-title-form {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      max-width: min(680px, 100%);
+    }
+    .ccx-session-title-form[hidden],
+    .ccx-session-info__title[hidden] {
+      display: none;
+    }
+    .ccx-session-title-input {
+      flex: 1;
+      min-width: 160px;
+      height: 32px;
+      padding: 0 10px;
+      font: inherit;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--ccx-text);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--ccx-border);
+      border-radius: var(--ccx-radius);
+      outline: none;
+      transition:
+        border-color var(--ccx-transition),
+        box-shadow var(--ccx-transition),
+        background var(--ccx-transition);
+    }
+    .ccx-session-title-input:focus {
+      background: rgba(255,255,255,0.05);
+      border-color: var(--ccx-accent);
+      box-shadow: 0 0 0 3px var(--ccx-glow);
     }
     .ccx-session-info__meta {
       font-size: 13px;
       color: var(--ccx-text-muted);
     }
     .ccx-session-info__meta span { color: var(--ccx-text-secondary); }
+
+    /* ── Session ID copy chip ── */
+    .ccx-session-id-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 8.5ch;
+      height: 22px;
+      padding: 0 7px;
+      font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+      font-size: 12px;
+      line-height: 1;
+      color: var(--ccx-text-secondary);
+      background: rgba(124, 92, 255, 0.08);
+      border: 1px solid rgba(124, 92, 255, 0.15);
+      border-radius: 4px;
+      cursor: pointer;
+      vertical-align: middle;
+      transition:
+        background var(--ccx-transition),
+        border-color var(--ccx-transition),
+        color var(--ccx-transition);
+    }
+    .ccx-session-id-chip:hover,
+    .ccx-session-id-chip:focus-visible {
+      color: var(--ccx-accent-soft);
+      background: var(--ccx-glow);
+      border-color: var(--ccx-accent);
+    }
+    .ccx-session-id-chip:focus-visible {
+      outline: 2px solid rgba(167, 139, 250, 0.35);
+      outline-offset: 2px;
+    }
+    .ccx-session-id-chip--copied {
+      color: var(--ccx-cost-low);
+      border-color: rgba(74, 222, 128, 0.55);
+      background: rgba(74, 222, 128, 0.10);
+    }
+    .ccx-session-id-chip__text { line-height: 1; }
 
     /* ── Conversation Timeline ── */
     .ccx-timeline {
