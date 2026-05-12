@@ -171,7 +171,7 @@
                   <div class="ccx-child-body">
                     {% if tc.result_content %}
                       {% for item in tc.result_content %}
-                        {% if item.get("type") == "text" %}<pre class="ccx-child-pre">{{ item.get("text","")[:600] }}{% if item.get("text","")|length > 600 %}…{% endif %}</pre>
+                        {% if item.get("type") == "text" %}<pre class="ccx-child-pre">{{ item.get("text","") }}</pre>
                         {% elif item.get("type") == "tool_reference" %}<div class="ccx-child-pre" style="color:var(--ccx-text-muted);">[tool_reference: {{ item.get("tool_name","") }}]</div>
                         {% endif %}
                       {% endfor %}
@@ -229,7 +229,7 @@
                       <div class="ccx-child-body">
                         {% if tc.result_content %}
                           {% for item in tc.result_content %}
-                            {% if item.get("type") == "text" %}<pre class="ccx-child-pre">{{ item.get("text","")[:600] }}{% if item.get("text","")|length > 600 %}…{% endif %}</pre>
+                            {% if item.get("type") == "text" %}<pre class="ccx-child-pre">{{ item.get("text","") }}</pre>
                             {% elif item.get("type") == "tool_reference" %}<div class="ccx-child-pre" style="color:var(--ccx-text-muted);">[tool_reference: {{ item.get("tool_name","") }}]</div>
                             {% endif %}
                           {% endfor %}
