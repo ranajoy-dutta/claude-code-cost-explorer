@@ -7,6 +7,7 @@ from claude_code_cost_explorer.reader import (
     get_sessions_for_date,
     get_session_by_id,
     CLAUDE_DIR,
+    _PROJECTS_DIR_OVERRIDE,
     append_custom_session_title,
 )
 
@@ -27,7 +28,10 @@ _session_cache_key: frozenset | None = None
 
 def _jsonl_fingerprint(claude_dir: str = CLAUDE_DIR) -> frozenset:
     """Return a frozenset of (path, mtime_ns) for every JSONL file under projects/."""
-    projects_dir = os.path.join(claude_dir, "projects")
+    if _PROJECTS_DIR_OVERRIDE:
+        projects_dir = os.path.expanduser(_PROJECTS_DIR_OVERRIDE)
+    else:
+        projects_dir = os.path.join(claude_dir, "projects")
     entries = []
     if os.path.isdir(projects_dir):
         for proj in os.listdir(projects_dir):
@@ -57,6 +61,8 @@ def load_all_sessions() -> list:
 DAY_SORTS = {
     "date": lambda d: d.date,
     "cost": lambda d: d.total_cost,
+    "bedrock": lambda d: d.bedrock_cost,
+    "api": lambda d: d.api_cost,
     "sessions": lambda d: d.session_count,
     "calls": lambda d: d.message_count,
     "input": lambda d: d.total_input_tokens,
@@ -67,6 +73,8 @@ SESSION_SORTS = {
     "session": lambda s: s.title.casefold(),
     "project": lambda s: s.project_name.casefold(),
     "cost": lambda s: s.total_cost,
+    "bedrock": lambda s: s.bedrock_cost,
+    "api": lambda s: s.api_cost,
     "calls": lambda s: s.message_count,
     "input": lambda s: s.total_input_tokens,
     "output": lambda s: s.total_output_tokens,
@@ -222,7 +230,20 @@ def _build_exchanges(turns):
     return exchanges
 
 
+def _source_label(source: str) -> str:
+    return "Bedrock" if source == "bedrock" else "API"
+
+
 app.jinja_env.filters["markdown"] = _render_markdown
+
+# Hidden in production; set CCX_SHOW_SOURCE_SPLIT=1 locally to surface the
+# Bedrock-vs-API breakdown in the UI. The split is still computed either way.
+SHOW_SOURCE_SPLIT = os.environ.get("CCX_SHOW_SOURCE_SPLIT", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 app.jinja_env.globals.update(
     format_cost=_format_cost,
@@ -231,6 +252,8 @@ app.jinja_env.globals.update(
     cost_severity=_cost_severity,
     action_label=_action_label,
     sort_url=_sort_url,
+    source_label=_source_label,
+    show_source_split=SHOW_SOURCE_SPLIT,
 )
 
 
@@ -274,6 +297,8 @@ def day_view():
         sort_by=sort_by,
         sort_order=sort_order,
         total_cost=sum(d.total_cost for d in days),
+        total_bedrock_cost=sum(d.bedrock_cost for d in days),
+        total_api_cost=sum(d.api_cost for d in days),
     )
 
 
@@ -298,6 +323,8 @@ def day_sessions_view(date):
         sort_by=sort_by,
         sort_order=sort_order,
         total_cost=sum(s.total_cost for s in day_sessions),
+        total_bedrock_cost=sum(s.bedrock_cost for s in day_sessions),
+        total_api_cost=sum(s.api_cost for s in day_sessions),
     )
 
 

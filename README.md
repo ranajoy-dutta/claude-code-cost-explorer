@@ -45,6 +45,12 @@ You can also choose a port:
 ccx --port 5051
 ```
 
+To point at a custom projects directory instead of `~/.claude/projects/`:
+
+```bash
+CLAUDE_PROJECTS_DIR=/path/to/projects ccx
+```
+
 ## Requirements
 
 - Python 3.10 or newer
