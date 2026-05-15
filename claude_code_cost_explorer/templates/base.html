@@ -1059,6 +1059,27 @@
     .ccx-child-row--thinking .ccx-child-dot { background: rgba(124,92,255,0.5); }
     .ccx-child-row--tool .ccx-child-dot     { background: rgba(210,153,34,0.6); }
     .ccx-child-row--result .ccx-child-dot   { background: rgba(74,222,128,0.4); }
+    .ccx-child-row--subagent .ccx-child-dot { background: rgba(249,115,22,0.6); }
+    /* Inline narration note — compact italic pill, not a block */
+    .ccx-child-note { flex: 1; min-width: 0; font-size: 12px; font-style: italic; color: var(--ccx-text-muted); padding: 2px 0 2px 2px; line-height: 1.4; }
+    /* Subagent drill-down */
+    .ccx-subagent-body { padding: 4px 0 4px 0; display: flex; flex-direction: column; gap: 0; }
+    .ccx-sa-commentary { margin: 0 0 8px 0; }
+    .ccx-sa-commentary summary { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 3px 8px; border-radius: 4px; font-size: 11px; color: var(--ccx-text-muted); list-style: none; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); width: fit-content; }
+    .ccx-sa-commentary summary::-webkit-details-marker { display: none; }
+    .ccx-sa-commentary summary:hover { background: rgba(255,255,255,0.06); }
+    .ccx-sa-commentary-body { padding: 8px 10px; margin-top: 4px; font-size: 12px; line-height: 1.6; color: var(--ccx-text-muted); font-style: italic; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); }
+    .ccx-sa-calls { display: flex; flex-direction: column; gap: 1px; }
+    .ccx-sa-row { border-left: 2px solid rgba(249,115,22,0.15); padding-left: 8px; margin-left: 2px; }
+    .ccx-sa-details { }
+    .ccx-sa-summary { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 3px 6px; border-radius: 4px; font-size: 12px; list-style: none; }
+    .ccx-sa-summary::-webkit-details-marker { display: none; }
+    .ccx-sa-summary:hover { background: rgba(255,255,255,0.04); }
+    .ccx-sa-icon { font-size: 11px; flex-shrink: 0; }
+    .ccx-sa-label { font-weight: 600; color: var(--ccx-text); font-size: 12px; flex-shrink: 0; }
+    .ccx-sa-meta { color: var(--ccx-text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .ccx-sa-body { padding: 4px 8px 4px 20px; }
+    .ccx-sa-result-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ccx-text-muted); margin: 6px 0 2px; }
     .ccx-child-tag {
       display: flex;
       align-items: center;
