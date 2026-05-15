@@ -1,9 +1,13 @@
-from cost import calculate_cost, get_rates, DEFAULT_RATES
+from claude_code_cost_explorer.cost import calculate_cost, get_rates, DEFAULT_RATES
 
 
 class TestGetRates:
     def test_opus_model(self):
         rates = get_rates("claude-opus-4-6")
+        assert rates["input"] == 5.00 and rates["output"] == 25.00
+
+    def test_opus_4_legacy_rate(self):
+        rates = get_rates("claude-opus-4-1")
         assert rates["input"] == 15.00 and rates["output"] == 75.00
 
     def test_sonnet_with_date_suffix(self):
@@ -12,7 +16,7 @@ class TestGetRates:
 
     def test_haiku_with_date_suffix(self):
         rates = get_rates("claude-haiku-4-5-20251001")
-        assert rates["input"] == 0.80 and rates["output"] == 4.00
+        assert rates["input"] == 1.00 and rates["output"] == 5.00
 
     def test_unknown_model_returns_default(self):
         assert get_rates("claude-unknown") == DEFAULT_RATES
@@ -44,9 +48,9 @@ class TestCalculateCost:
         )
 
     def test_input_tokens_opus(self):
-        # 1M input tokens at $15/MTok = $15
+        # 1M input tokens at $5/MTok = $5
         assert (
-            abs(calculate_cost("claude-opus-4-6", {"input_tokens": 1_000_000}) - 15.0)
+            abs(calculate_cost("claude-opus-4-6", {"input_tokens": 1_000_000}) - 5.0)
             < 1e-9
         )
 
@@ -57,7 +61,7 @@ class TestCalculateCost:
                     "claude-haiku-4-5-20251001",
                     {"cache_creation_input_tokens": 1_000_000},
                 )
-                - 1.00
+                - 1.25
             )
             < 1e-9
         )
@@ -68,7 +72,7 @@ class TestCalculateCost:
                 calculate_cost(
                     "claude-haiku-4-5-20251001", {"cache_read_input_tokens": 1_000_000}
                 )
-                - 0.08
+                - 0.10
             )
             < 1e-9
         )
