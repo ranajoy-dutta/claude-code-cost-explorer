@@ -1,4 +1,4 @@
-from claude_code_cost_explorer.cost import calculate_cost, get_rates, DEFAULT_RATES
+from cost import calculate_cost, get_rates, DEFAULT_RATES
 
 
 class TestGetRates:
