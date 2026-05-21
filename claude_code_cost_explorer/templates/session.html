@@ -11,6 +11,56 @@
   border-radius: 10px;
   animation: ccx-exchange-glow 2.2s ease forwards;
 }
+.ccx-compaction-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -20px 0 20px;
+  color: var(--ccx-text-muted);
+  font-size: 11px;
+}
+.ccx-compaction-bar__line {
+  flex: 1;
+  border: none;
+  border-top: 1px dashed var(--ccx-border);
+}
+.ccx-compaction-bar__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ccx-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ccx-compaction-bar__info {
+  position: relative;
+  cursor: default;
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1;
+}
+.ccx-compaction-bar__info::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ccx-surface, #1e1e2e);
+  color: var(--ccx-text-muted);
+  border: 1px solid var(--ccx-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.ccx-compaction-bar__info:hover::after {
+  opacity: 1;
+}
 </style>
 {% endblock %}
 {% block breadcrumb %}
@@ -125,6 +175,20 @@
 <h2>Conversation</h2>
 <div class="ccx-conversation">
   {% for ex in exchanges %}
+  {% if ex.type == "compaction" %}
+  {% set ev = ex.event %}
+  {% set _pre_k = (ev.pre_tokens // 1000) %}
+  {% set _post_k = (ev.post_tokens // 1000) %}
+  {% set _dur_s = (ev.duration_ms // 1000) %}
+  {% set _dur_m = (_dur_s // 60) %}
+  {% set _dur_rem = (_dur_s % 60) %}
+  {% set _tip = "Context compacted (" ~ ev.trigger ~ "): " ~ _pre_k ~ "K → " ~ _post_k ~ "K tokens · " ~ (_dur_m ~ "m " ~ _dur_rem ~ "s" if _dur_m else _dur_s ~ "s") ~ ". Cost of this API call is not tracked." %}
+  <div class="ccx-compaction-bar">
+    <hr class="ccx-compaction-bar__line">
+    <span class="ccx-compaction-bar__label">compact <i class="ccx-compaction-bar__info" data-tip="{{ _tip }}">ⓘ</i></span>
+    <hr class="ccx-compaction-bar__line">
+  </div>
+  {% else %}
   {% set ex_date = (ex.user_turn.timestamp[:10] if ex.user_turn and ex.user_turn.timestamp else (ex.final_turn.timestamp[:10] if ex.final_turn and ex.final_turn.timestamp else "")) %}
   <div class="ccx-exchange" data-date="{{ ex_date }}">
 
@@ -365,6 +429,7 @@
     {% endif %}
 
   </div>
+  {% endif %}
   {% endfor %}
 </div>
 

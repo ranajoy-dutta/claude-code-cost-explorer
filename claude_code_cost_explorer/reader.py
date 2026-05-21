@@ -96,6 +96,7 @@ class SessionData:
     bedrock_cost: float = 0.0
     api_cost: float = 0.0
     source: str = "api"  # dominant source for this session
+    compaction_events: list = field(default_factory=list)  # list[CompactionEvent]
 
 
 @dataclass
@@ -109,6 +110,15 @@ class DaySummary:
     sessions: list = field(default_factory=list)
     bedrock_cost: float = 0.0
     api_cost: float = 0.0
+
+
+@dataclass
+class CompactionEvent:
+    timestamp: str
+    trigger: str
+    pre_tokens: int
+    post_tokens: int
+    duration_ms: int
 
 
 def _parse_subagent_jsonl(jsonl_path: str, agent_id: str) -> SubagentData:
@@ -433,9 +443,21 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     _uuid_to_turn = {}
     _assistant_parent_map = {}
     _mid_to_turn: dict = {}
+    compaction_events_list: list = []
     for r in records:
         rtype = r.get("type")
-        if rtype == "user":
+        if rtype == "system" and r.get("subtype") == "compact_boundary":
+            meta = r.get("compactMetadata") or {}
+            compaction_events_list.append(
+                CompactionEvent(
+                    timestamp=r.get("timestamp", ""),
+                    trigger=meta.get("trigger", ""),
+                    pre_tokens=meta.get("preTokens", 0),
+                    post_tokens=meta.get("postTokens", 0),
+                    duration_ms=meta.get("durationMs", 0),
+                )
+            )
+        elif rtype == "user":
             msg = r.get("message", {})
             content = msg.get("content") if msg else r.get("content")
             # Step B: collect tool_result blocks into pending_tool_calls
@@ -671,6 +693,7 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
         bedrock_cost=bedrock_cost,
         api_cost=api_cost,
         source=session_source,
+        compaction_events=compaction_events_list,
     )
 
 

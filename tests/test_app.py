@@ -197,3 +197,97 @@ class TestSessionDetailView:
         assert resp.status_code == 302
         assert resp.headers["Location"] == f"/session/{mock_sessions[0].session_id}"
         assert calls == [(mock_sessions[0].session_id, "Renamed session")]
+
+
+class TestBuildExchanges:
+    def test_no_compaction_events(self):
+        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.reader import Turn
+
+        turns = [
+            Turn(
+                uuid="t1",
+                timestamp="2025-10-25T10:00:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="hi",
+            ),
+            Turn(
+                uuid="t2",
+                timestamp="2025-10-25T10:01:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="",
+            ),
+        ]
+        result = _build_exchanges(turns, [])
+        assert len(result) == 1
+        assert result[0]["type"] == "exchange"
+
+    def test_compaction_inserted_between_exchanges(self):
+        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.reader import Turn, CompactionEvent
+
+        turns = [
+            Turn(
+                uuid="t1",
+                timestamp="2025-10-25T10:00:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="first",
+            ),
+            Turn(
+                uuid="t2",
+                timestamp="2025-10-25T10:03:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="second",
+            ),
+        ]
+        events = [
+            CompactionEvent(
+                timestamp="2025-10-25T10:02:00.000Z",
+                trigger="manual",
+                pre_tokens=50000,
+                post_tokens=4000,
+                duration_ms=30000,
+            )
+        ]
+        result = _build_exchanges(turns, events)
+        assert len(result) == 3
+        assert result[0]["type"] == "exchange"
+        assert result[1]["type"] == "compaction"
+        assert result[1]["event"].trigger == "manual"
+        assert result[2]["type"] == "exchange"
+
+    def test_compaction_before_all_exchanges(self):
+        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.reader import Turn, CompactionEvent
+
+        turns = [
+            Turn(
+                uuid="t1",
+                timestamp="2025-10-25T10:05:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="only",
+            ),
+        ]
+        events = [
+            CompactionEvent(
+                timestamp="2025-10-25T10:01:00.000Z",
+                trigger="auto",
+                pre_tokens=1000,
+                post_tokens=100,
+                duration_ms=5000,
+            )
+        ]
+        result = _build_exchanges(turns, events)
+        assert len(result) == 2
+        assert result[0]["type"] == "compaction"
+        assert result[1]["type"] == "exchange"

@@ -194,31 +194,29 @@ def _action_label(turn) -> str:
     return "API Call"
 
 
-def _build_exchanges(turns):
-    """Group turns into exchanges for the conversation timeline.
+def _build_exchanges(turns, compaction_events):
+    """Group turns into exchanges and interleave compaction markers by timestamp.
 
-    An exchange starts at each turn that has a user_prompt_full (real user
-    message). All subsequent turns without a user prompt belong to the same
-    exchange as intermediate steps. The last turn in each exchange provides
-    the final assistant response.
+    Returns a list of dicts, each either:
+      {"type": "exchange", "user_turn": ..., "intermediate_turns": [...], "final_turn": ...}
+      {"type": "compaction", "event": CompactionEvent}
     """
-    exchanges = []
+    raw_exchanges = []
     current = None
     for turn in turns:
         if turn.user_prompt_full or turn.user_prompt:
-            # Start a new exchange
             if current is not None:
-                exchanges.append(current)
+                raw_exchanges.append(current)
             current = {
+                "type": "exchange",
                 "user_turn": turn,
                 "intermediate_turns": [],
-                "final_turn": turn,  # default: same as user turn
+                "final_turn": turn,
             }
         else:
-            # Intermediate turn (tool-call continuation)
             if current is None:
-                # Edge case: first turn has no user prompt
                 current = {
+                    "type": "exchange",
                     "user_turn": None,
                     "intermediate_turns": [],
                     "final_turn": turn,
@@ -226,8 +224,22 @@ def _build_exchanges(turns):
             current["intermediate_turns"].append(turn)
             current["final_turn"] = turn
     if current is not None:
-        exchanges.append(current)
-    return exchanges
+        raw_exchanges.append(current)
+
+    if not compaction_events:
+        return raw_exchanges
+
+    # Merge compaction markers in by timestamp
+    def _ts(item):
+        if item.get("type") == "exchange":
+            t = item["final_turn"]
+            return t.timestamp if t else ""
+        return item["event"].timestamp
+
+    compaction_items = [{"type": "compaction", "event": ev} for ev in compaction_events]
+    merged = raw_exchanges + compaction_items
+    merged.sort(key=_ts)
+    return merged
 
 
 def _source_label(source: str) -> str:
@@ -367,7 +379,7 @@ def session_detail_view(session_id):
         except OSError:
             abort(500)
         return redirect(url_for("session_detail_view", session_id=session_id))
-    exchanges = _build_exchanges(session.turns)
+    exchanges = _build_exchanges(session.turns, session.compaction_events)
     highlight_date = request.args.get("from_date", "")
     return render_template(
         "session.html",
