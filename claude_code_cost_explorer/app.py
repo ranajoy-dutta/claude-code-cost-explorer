@@ -194,31 +194,30 @@ def _action_label(turn) -> str:
     return "API Call"
 
 
-def _build_exchanges(turns):
-    """Group turns into exchanges for the conversation timeline.
+def _build_exchanges(turns, compaction_events, away_summary_events=None):
+    """Group turns into exchanges and interleave compaction/away_summary markers by timestamp.
 
-    An exchange starts at each turn that has a user_prompt_full (real user
-    message). All subsequent turns without a user prompt belong to the same
-    exchange as intermediate steps. The last turn in each exchange provides
-    the final assistant response.
+    Returns a list of dicts, each one of:
+      {"type": "exchange", "user_turn": ..., "intermediate_turns": [...], "final_turn": ...}
+      {"type": "compaction", "event": CompactionEvent}
+      {"type": "away_summary", "event": AwaySummaryEvent}
     """
-    exchanges = []
+    raw_exchanges = []
     current = None
     for turn in turns:
         if turn.user_prompt_full or turn.user_prompt:
-            # Start a new exchange
             if current is not None:
-                exchanges.append(current)
+                raw_exchanges.append(current)
             current = {
+                "type": "exchange",
                 "user_turn": turn,
                 "intermediate_turns": [],
-                "final_turn": turn,  # default: same as user turn
+                "final_turn": turn,
             }
         else:
-            # Intermediate turn (tool-call continuation)
             if current is None:
-                # Edge case: first turn has no user prompt
                 current = {
+                    "type": "exchange",
                     "user_turn": None,
                     "intermediate_turns": [],
                     "final_turn": turn,
@@ -226,8 +225,26 @@ def _build_exchanges(turns):
             current["intermediate_turns"].append(turn)
             current["final_turn"] = turn
     if current is not None:
-        exchanges.append(current)
-    return exchanges
+        raw_exchanges.append(current)
+
+    marker_items = []
+    for ev in compaction_events or []:
+        marker_items.append({"type": "compaction", "event": ev})
+    for ev in away_summary_events or []:
+        marker_items.append({"type": "away_summary", "event": ev})
+
+    if not marker_items:
+        return raw_exchanges
+
+    def _ts(item):
+        if item.get("type") == "exchange":
+            t = item["final_turn"]
+            return t.timestamp if t else ""
+        return item["event"].timestamp
+
+    merged = raw_exchanges + marker_items
+    merged.sort(key=_ts)
+    return merged
 
 
 def _source_label(source: str) -> str:
@@ -315,16 +332,41 @@ def day_sessions_view(date):
     day_sessions = get_sessions_for_date(sessions, date)
     if not day_sessions:
         abort(404)
-    day_sessions = _sort_items(day_sessions, sort_by, sort_order, SESSION_SORTS)
+
+    day_costs: dict[str, float] = {}
+    day_bedrock: dict[str, float] = {}
+    day_api: dict[str, float] = {}
+    for s in day_sessions:
+        dc = db = da = 0.0
+        for t in s.turns:
+            if t.timestamp and t.timestamp[:10] == date:
+                dc += t.cost_usd
+                if t.source == "bedrock":
+                    db += t.cost_usd
+                else:
+                    da += t.cost_usd
+        day_costs[s.session_id] = dc
+        day_bedrock[s.session_id] = db
+        day_api[s.session_id] = da
+
+    day_session_sorts = dict(SESSION_SORTS)
+    day_session_sorts["cost"] = lambda s: day_costs.get(s.session_id, 0.0)
+    day_session_sorts["bedrock"] = lambda s: day_bedrock.get(s.session_id, 0.0)
+    day_session_sorts["api"] = lambda s: day_api.get(s.session_id, 0.0)
+    day_sessions = _sort_items(day_sessions, sort_by, sort_order, day_session_sorts)
+
     return render_template(
         "sessions.html",
         date=date,
         sessions=day_sessions,
         sort_by=sort_by,
         sort_order=sort_order,
-        total_cost=sum(s.total_cost for s in day_sessions),
-        total_bedrock_cost=sum(s.bedrock_cost for s in day_sessions),
-        total_api_cost=sum(s.api_cost for s in day_sessions),
+        day_costs=day_costs,
+        day_bedrock=day_bedrock,
+        day_api=day_api,
+        total_cost=sum(day_costs.values()),
+        total_bedrock_cost=sum(day_bedrock.values()),
+        total_api_cost=sum(day_api.values()),
     )
 
 
@@ -342,8 +384,16 @@ def session_detail_view(session_id):
         except OSError:
             abort(500)
         return redirect(url_for("session_detail_view", session_id=session_id))
-    exchanges = _build_exchanges(session.turns)
-    return render_template("session.html", session=session, exchanges=exchanges)
+    exchanges = _build_exchanges(
+        session.turns, session.compaction_events, session.away_summary_events
+    )
+    highlight_date = request.args.get("from_date", "")
+    return render_template(
+        "session.html",
+        session=session,
+        exchanges=exchanges,
+        highlight_date=highlight_date,
+    )
 
 
 @app.route("/session/<session_id>/turn/<turn_uuid>")

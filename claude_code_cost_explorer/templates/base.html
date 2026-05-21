@@ -1412,6 +1412,50 @@
     }
     .ccx-modal__full-link:hover { color: var(--ccx-accent-soft); }
 
+    /* ── Scroll-to-bottom button ── */
+    .ccx-scroll-bottom {
+      position: fixed;
+      bottom: 28px;
+      right: 24px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--ccx-surface);
+      border: 1px solid var(--ccx-border);
+      color: var(--ccx-text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(6px);
+      transition:
+        opacity 0.2s ease,
+        visibility 0.2s ease,
+        transform 0.2s ease,
+        border-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease;
+      z-index: 200;
+    }
+    .ccx-scroll-bottom.is-visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+    .ccx-scroll-bottom:hover {
+      color: var(--ccx-accent-soft);
+      border-color: rgba(124,92,255,0.45);
+      box-shadow: 0 0 12px rgba(124,92,255,0.18);
+    }
+    .ccx-scroll-bottom svg {
+      transition: transform 0.2s ease;
+    }
+    .ccx-scroll-bottom:hover svg {
+      transform: translateY(2px);
+    }
+
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .ccx-main { padding: 16px 12px 32px; }
@@ -1453,5 +1497,31 @@
     </div>
   </header>
   <main class="ccx-main">{% block content %}{% endblock %}</main>
+  <button class="ccx-scroll-bottom" id="ccx-scroll-bottom" title="Scroll to bottom" aria-label="Scroll to bottom">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/>
+      <polyline points="19 12 12 19 5 12"/>
+    </svg>
+  </button>
+  <script>
+  (function() {
+    var btn = document.getElementById('ccx-scroll-bottom');
+    var THRESHOLD = 300;
+    function update() {
+      var scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      var distFromBottom = scrollable - window.scrollY;
+      if (scrollable > 80 && distFromBottom > 80) {
+        btn.classList.add('is-visible');
+      } else {
+        btn.classList.remove('is-visible');
+      }
+    }
+    window.addEventListener('scroll', update, { passive: true });
+    btn.addEventListener('click', function() {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+    });
+    update();
+  })();
+  </script>
 </body>
 </html>

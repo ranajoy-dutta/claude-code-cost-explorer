@@ -1,5 +1,138 @@
 {% extends "base.html" %}
 {% block title %}{{ session.title }} — Claude Code Cost Explorer{% endblock %}
+{% block extra_head %}
+<style>
+@keyframes ccx-exchange-glow {
+  0%   { background: rgba(124,92,255,0.10); box-shadow: 0 0 0 1px rgba(124,92,255,0.18); }
+  60%  { background: rgba(124,92,255,0.06); box-shadow: 0 0 0 1px rgba(124,92,255,0.08); }
+  100% { background: transparent;           box-shadow: none; }
+}
+.ccx-exchange--highlight {
+  border-radius: 10px;
+  animation: ccx-exchange-glow 2.2s ease forwards;
+}
+.ccx-compaction-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -20px 0 20px;
+  color: var(--ccx-text-muted);
+  font-size: 11px;
+}
+.ccx-compaction-bar__line {
+  flex: 1;
+  border: none;
+  border-top: 1px dashed var(--ccx-border);
+}
+.ccx-compaction-bar__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ccx-text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ccx-compaction-bar__info {
+  position: relative;
+  cursor: default;
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1;
+}
+.ccx-compaction-bar__info::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ccx-surface, #1e1e2e);
+  color: var(--ccx-text-muted);
+  border: 1px solid var(--ccx-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.ccx-compaction-bar__info:hover::after {
+  opacity: 1;
+}
+
+/* ── Away Summary bar ── */
+.ccx-away-bar {
+  margin: -20px 0 20px;
+}
+.ccx-away-bar__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ccx-text-muted);
+  font-size: 11px;
+}
+.ccx-away-bar__header::-webkit-details-marker { display: none; }
+.ccx-away-bar__line {
+  flex: 1;
+  border: none;
+  border-top: 1px dashed rgba(250, 204, 21, 0.35);
+}
+.ccx-away-bar__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(250, 204, 21, 0.7);
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ccx-away-bar__chevron {
+  font-style: normal;
+  font-size: 9px;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+details[open] .ccx-away-bar__chevron {
+  transform: rotate(90deg);
+}
+.ccx-away-bar__body {
+  margin: 8px 0 0 0;
+  padding: 10px 14px;
+  background: rgba(250, 204, 21, 0.05);
+  border: 1px solid rgba(250, 204, 21, 0.15);
+  border-radius: 6px;
+  color: var(--ccx-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ── AI Title chip in session header ── */
+.ccx-aititle-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(124, 92, 255, 0.08);
+  border: 1px solid rgba(124, 92, 255, 0.2);
+  color: var(--ccx-text-muted);
+  font-size: 11px;
+  cursor: default;
+}
+.ccx-aititle-note__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ccx-accent-soft);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+</style>
+{% endblock %}
 {% block breadcrumb %}
 <span class="ccx-header__sep">/</span>
 <span class="ccx-header__crumb"><a href="/">All Days</a></span>
@@ -72,6 +205,9 @@
     {% if show_source_split %}
     · <span class="ccx-badge ccx-badge--source ccx-badge--{{ session.source }}" title="{% if session.bedrock_cost %}Bedrock {{ format_cost(session.bedrock_cost) }}{% endif %}{% if session.bedrock_cost and session.api_cost %} · {% endif %}{% if session.api_cost %}API {{ format_cost(session.api_cost) }}{% endif %}">{{ source_label(session.source) }}</span>
     {% endif %}
+    {% if session.ai_title_event %}
+    · <span class="ccx-aititle-note" title="AI-generated title: &quot;{{ session.ai_title_event.ai_title }}&quot; — LLM call cost not tracked"><span class="ccx-aititle-note__dot"></span>AI title (cost not tracked)</span>
+    {% endif %}
   </div>
 </div>
 
@@ -112,7 +248,32 @@
 <h2>Conversation</h2>
 <div class="ccx-conversation">
   {% for ex in exchanges %}
-  <div class="ccx-exchange">
+  {% if ex.type == "compaction" %}
+  {% set ev = ex.event %}
+  {% set _pre_k = (ev.pre_tokens // 1000) %}
+  {% set _post_k = (ev.post_tokens // 1000) %}
+  {% set _dur_s = (ev.duration_ms // 1000) %}
+  {% set _dur_m = (_dur_s // 60) %}
+  {% set _dur_rem = (_dur_s % 60) %}
+  {% set _tip = "Context compacted (" ~ ev.trigger ~ "): " ~ _pre_k ~ "K → " ~ _post_k ~ "K tokens · " ~ (_dur_m ~ "m " ~ _dur_rem ~ "s" if _dur_m else _dur_s ~ "s") ~ ". Cost of this API call is not tracked." %}
+  <div class="ccx-compaction-bar">
+    <hr class="ccx-compaction-bar__line">
+    <span class="ccx-compaction-bar__label">compact <i class="ccx-compaction-bar__info" data-tip="{{ _tip }}">ⓘ</i></span>
+    <hr class="ccx-compaction-bar__line">
+  </div>
+  {% elif ex.type == "away_summary" %}
+  {% set ev = ex.event %}
+  <details class="ccx-away-bar">
+    <summary class="ccx-away-bar__header">
+      <hr class="ccx-away-bar__line">
+      <span class="ccx-away-bar__label"><i class="ccx-away-bar__chevron">▶</i> away recap <span style="color:var(--ccx-text-muted);font-size:10px;">· cost not tracked</span></span>
+      <hr class="ccx-away-bar__line">
+    </summary>
+    <div class="ccx-away-bar__body">{{ ev.content }}</div>
+  </details>
+  {% else %}
+  {% set ex_date = (ex.user_turn.timestamp[:10] if ex.user_turn and ex.user_turn.timestamp else (ex.final_turn.timestamp[:10] if ex.final_turn and ex.final_turn.timestamp else "")) %}
+  <div class="ccx-exchange" data-date="{{ ex_date }}">
 
     {# ── Vertical spine that runs through the whole exchange ── #}
     <div class="ccx-exchange__spine"></div>
@@ -351,6 +512,7 @@
     {% endif %}
 
   </div>
+  {% endif %}
   {% endfor %}
 </div>
 
@@ -498,6 +660,16 @@ if (sessionTitleInput) {
     }
   });
 }
+{% if highlight_date %}
+(function() {
+  var target = document.querySelector('.ccx-exchange[data-date="{{ highlight_date }}"]');
+  if (!target) return;
+  var HEADER_H = 48 + 12;
+  var top = target.getBoundingClientRect().top + window.scrollY - HEADER_H;
+  window.scrollTo({ top: top, behavior: 'smooth' });
+  target.classList.add('ccx-exchange--highlight');
+})();
+{% endif %}
 function copySessionId(chip) {
   const id = chip.dataset.sessionId;
   const label = chip.querySelector('.ccx-session-id-chip__text');

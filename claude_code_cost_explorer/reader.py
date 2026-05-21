@@ -96,6 +96,9 @@ class SessionData:
     bedrock_cost: float = 0.0
     api_cost: float = 0.0
     source: str = "api"  # dominant source for this session
+    compaction_events: list = field(default_factory=list)  # list[CompactionEvent]
+    away_summary_events: list = field(default_factory=list)  # list[AwaySummaryEvent]
+    ai_title_event: Optional[AiTitleEvent] = None
 
 
 @dataclass
@@ -109,6 +112,26 @@ class DaySummary:
     sessions: list = field(default_factory=list)
     bedrock_cost: float = 0.0
     api_cost: float = 0.0
+
+
+@dataclass
+class CompactionEvent:
+    timestamp: str
+    trigger: str
+    pre_tokens: int
+    post_tokens: int
+    duration_ms: int
+
+
+@dataclass
+class AwaySummaryEvent:
+    timestamp: str
+    content: str
+
+
+@dataclass
+class AiTitleEvent:
+    ai_title: str
 
 
 def _parse_subagent_jsonl(jsonl_path: str, agent_id: str) -> SubagentData:
@@ -308,14 +331,29 @@ def _load_subagents(session_jsonl_path: str) -> dict:
     return result
 
 
+_SYSTEM_INJECTED_PREFIXES = (
+    "[Request",
+    "<task-notification>",
+    "<user-prompt-submit-hook>",
+    "<system-reminder>",
+    "Base directory for this skill:",
+)
+
+
+def _is_system_text(text: str) -> bool:
+    return any(text.startswith(p) for p in _SYSTEM_INJECTED_PREFIXES)
+
+
 def _extract_user_prompt(content) -> str:
     if isinstance(content, str):
-        return content[:120]
+        if not _is_system_text(content):
+            return content[:120]
+        return ""
     if isinstance(content, list):
         for item in content:
             if isinstance(item, dict) and item.get("type") == "text":
                 text = item.get("text", "")
-                if text and not text.startswith("[Request"):
+                if text and not _is_system_text(text):
                     return text[:120]
     return ""
 
@@ -350,12 +388,15 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     # Title: latest custom-title > ai-title > slug > fallback
     title = None
     slug = None
+    seen_ai_title: Optional[str] = None
     for r in records:
         rtype = r.get("type")
         if rtype == "custom-title" and r.get("customTitle"):
             title = r["customTitle"]
-        elif rtype == "ai-title" and not title and r.get("aiTitle"):
-            title = r["aiTitle"]
+        elif rtype == "ai-title" and r.get("aiTitle"):
+            if not title:
+                title = r["aiTitle"]
+            seen_ai_title = r["aiTitle"]
         if not slug and r.get("slug"):
             slug = r["slug"]
     if not title:
@@ -418,9 +459,31 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     _uuid_to_turn = {}
     _assistant_parent_map = {}
     _mid_to_turn: dict = {}
+    compaction_events_list: list = []
+    away_summary_events_list: list = []
     for r in records:
         rtype = r.get("type")
-        if rtype == "user":
+        if rtype == "system" and r.get("subtype") == "compact_boundary":
+            meta = r.get("compactMetadata") or {}
+            compaction_events_list.append(
+                CompactionEvent(
+                    timestamp=r.get("timestamp", ""),
+                    trigger=meta.get("trigger", ""),
+                    pre_tokens=meta.get("preTokens", 0),
+                    post_tokens=meta.get("postTokens", 0),
+                    duration_ms=meta.get("durationMs", 0),
+                )
+            )
+        elif rtype == "system" and r.get("subtype") == "away_summary":
+            content = r.get("content", "")
+            if content:
+                away_summary_events_list.append(
+                    AwaySummaryEvent(
+                        timestamp=r.get("timestamp", ""),
+                        content=content,
+                    )
+                )
+        elif rtype == "user":
             msg = r.get("message", {})
             content = msg.get("content") if msg else r.get("content")
             # Step B: collect tool_result blocks into pending_tool_calls
@@ -469,10 +532,10 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
                     for item in content:
                         if isinstance(item, dict) and item.get("type") == "text":
                             t = item.get("text", "")
-                            if t and not t.startswith("[Request"):
+                            if t and not _is_system_text(t):
                                 pending_user_prompt_full = t
                                 break
-                elif isinstance(content, str) and not content.startswith("[Request"):
+                elif isinstance(content, str) and not _is_system_text(content):
                     pending_user_prompt_full = content
         elif rtype == "assistant":
             parent_uuid = r.get("parentUuid", "")
@@ -656,6 +719,9 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
         bedrock_cost=bedrock_cost,
         api_cost=api_cost,
         source=session_source,
+        compaction_events=compaction_events_list,
+        away_summary_events=away_summary_events_list,
+        ai_title_event=AiTitleEvent(ai_title=seen_ai_title) if seen_ai_title else None,
     )
 
 
@@ -686,29 +752,42 @@ def build_day_summaries(
 ) -> list[DaySummary]:
     days: dict[str, DaySummary] = {}
     for s in sessions:
-        d = s.date
-        if not d or (from_date and d < from_date) or (to_date and d > to_date):
-            continue
-        if d not in days:
-            days[d] = DaySummary(date=d)
-        day = days[d]
-        day.total_cost += s.total_cost
-        day.bedrock_cost += s.bedrock_cost
-        day.api_cost += s.api_cost
-        day.session_count += 1
-        day.message_count += s.message_count
-        day.total_input_tokens += s.total_input_tokens
-        day.total_output_tokens += s.total_output_tokens
-        day.sessions.append(s)
+        dates_seen: set = set()
+        for turn in s.turns:
+            d = turn.timestamp[:10] if turn.timestamp else ""
+            if not d or (from_date and d < from_date) or (to_date and d > to_date):
+                continue
+            if d not in days:
+                days[d] = DaySummary(date=d)
+            day = days[d]
+            day.total_cost += turn.cost_usd
+            if turn.source == "bedrock":
+                day.bedrock_cost += turn.cost_usd
+            else:
+                day.api_cost += turn.cost_usd
+            day.message_count += 1
+            day.total_input_tokens += turn.usage.get("input_tokens", 0)
+            day.total_output_tokens += turn.usage.get("output_tokens", 0)
+            if d not in dates_seen:
+                dates_seen.add(d)
+                day.session_count += 1
+                day.sessions.append(s)
     return sorted(days.values(), key=lambda x: x.date, reverse=True)
 
 
 def get_sessions_for_date(sessions: list[SessionData], date: str) -> list[SessionData]:
-    return sorted(
-        [s for s in sessions if s.date == date],
-        key=lambda s: s.first_timestamp,
-        reverse=True,
-    )
+    def _first_ts_on_date(s: SessionData) -> str:
+        for t in s.turns:
+            if t.timestamp and t.timestamp[:10] == date:
+                return t.timestamp
+        return s.first_timestamp
+
+    matching = [
+        s
+        for s in sessions
+        if any(t.timestamp and t.timestamp[:10] == date for t in s.turns)
+    ]
+    return sorted(matching, key=_first_ts_on_date, reverse=True)
 
 
 def get_session_by_id(
