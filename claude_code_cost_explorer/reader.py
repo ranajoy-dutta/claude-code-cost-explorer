@@ -97,6 +97,8 @@ class SessionData:
     api_cost: float = 0.0
     source: str = "api"  # dominant source for this session
     compaction_events: list = field(default_factory=list)  # list[CompactionEvent]
+    away_summary_events: list = field(default_factory=list)  # list[AwaySummaryEvent]
+    ai_title_event: Optional[AiTitleEvent] = None
 
 
 @dataclass
@@ -119,6 +121,17 @@ class CompactionEvent:
     pre_tokens: int
     post_tokens: int
     duration_ms: int
+
+
+@dataclass
+class AwaySummaryEvent:
+    timestamp: str
+    content: str
+
+
+@dataclass
+class AiTitleEvent:
+    ai_title: str
 
 
 def _parse_subagent_jsonl(jsonl_path: str, agent_id: str) -> SubagentData:
@@ -375,12 +388,15 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     # Title: latest custom-title > ai-title > slug > fallback
     title = None
     slug = None
+    seen_ai_title: Optional[str] = None
     for r in records:
         rtype = r.get("type")
         if rtype == "custom-title" and r.get("customTitle"):
             title = r["customTitle"]
-        elif rtype == "ai-title" and not title and r.get("aiTitle"):
-            title = r["aiTitle"]
+        elif rtype == "ai-title" and r.get("aiTitle"):
+            if not title:
+                title = r["aiTitle"]
+            seen_ai_title = r["aiTitle"]
         if not slug and r.get("slug"):
             slug = r["slug"]
     if not title:
@@ -444,6 +460,7 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     _assistant_parent_map = {}
     _mid_to_turn: dict = {}
     compaction_events_list: list = []
+    away_summary_events_list: list = []
     for r in records:
         rtype = r.get("type")
         if rtype == "system" and r.get("subtype") == "compact_boundary":
@@ -457,6 +474,15 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
                     duration_ms=meta.get("durationMs", 0),
                 )
             )
+        elif rtype == "system" and r.get("subtype") == "away_summary":
+            content = r.get("content", "")
+            if content:
+                away_summary_events_list.append(
+                    AwaySummaryEvent(
+                        timestamp=r.get("timestamp", ""),
+                        content=content,
+                    )
+                )
         elif rtype == "user":
             msg = r.get("message", {})
             content = msg.get("content") if msg else r.get("content")
@@ -694,6 +720,8 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
         api_cost=api_cost,
         source=session_source,
         compaction_events=compaction_events_list,
+        away_summary_events=away_summary_events_list,
+        ai_title_event=AiTitleEvent(ai_title=seen_ai_title) if seen_ai_title else None,
     )
 
 

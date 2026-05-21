@@ -194,12 +194,13 @@ def _action_label(turn) -> str:
     return "API Call"
 
 
-def _build_exchanges(turns, compaction_events):
-    """Group turns into exchanges and interleave compaction markers by timestamp.
+def _build_exchanges(turns, compaction_events, away_summary_events=None):
+    """Group turns into exchanges and interleave compaction/away_summary markers by timestamp.
 
-    Returns a list of dicts, each either:
+    Returns a list of dicts, each one of:
       {"type": "exchange", "user_turn": ..., "intermediate_turns": [...], "final_turn": ...}
       {"type": "compaction", "event": CompactionEvent}
+      {"type": "away_summary", "event": AwaySummaryEvent}
     """
     raw_exchanges = []
     current = None
@@ -226,18 +227,22 @@ def _build_exchanges(turns, compaction_events):
     if current is not None:
         raw_exchanges.append(current)
 
-    if not compaction_events:
+    marker_items = []
+    for ev in compaction_events or []:
+        marker_items.append({"type": "compaction", "event": ev})
+    for ev in away_summary_events or []:
+        marker_items.append({"type": "away_summary", "event": ev})
+
+    if not marker_items:
         return raw_exchanges
 
-    # Merge compaction markers in by timestamp
     def _ts(item):
         if item.get("type") == "exchange":
             t = item["final_turn"]
             return t.timestamp if t else ""
         return item["event"].timestamp
 
-    compaction_items = [{"type": "compaction", "event": ev} for ev in compaction_events]
-    merged = raw_exchanges + compaction_items
+    merged = raw_exchanges + marker_items
     merged.sort(key=_ts)
     return merged
 
@@ -379,7 +384,9 @@ def session_detail_view(session_id):
         except OSError:
             abort(500)
         return redirect(url_for("session_detail_view", session_id=session_id))
-    exchanges = _build_exchanges(session.turns, session.compaction_events)
+    exchanges = _build_exchanges(
+        session.turns, session.compaction_events, session.away_summary_events
+    )
     highlight_date = request.args.get("from_date", "")
     return render_template(
         "session.html",

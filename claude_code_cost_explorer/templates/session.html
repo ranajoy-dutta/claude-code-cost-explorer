@@ -61,6 +61,76 @@
 .ccx-compaction-bar__info:hover::after {
   opacity: 1;
 }
+
+/* ── Away Summary bar ── */
+.ccx-away-bar {
+  margin: -20px 0 20px;
+}
+.ccx-away-bar__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ccx-text-muted);
+  font-size: 11px;
+}
+.ccx-away-bar__header::-webkit-details-marker { display: none; }
+.ccx-away-bar__line {
+  flex: 1;
+  border: none;
+  border-top: 1px dashed rgba(250, 204, 21, 0.35);
+}
+.ccx-away-bar__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(250, 204, 21, 0.7);
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ccx-away-bar__chevron {
+  font-style: normal;
+  font-size: 9px;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+details[open] .ccx-away-bar__chevron {
+  transform: rotate(90deg);
+}
+.ccx-away-bar__body {
+  margin: 8px 0 0 0;
+  padding: 10px 14px;
+  background: rgba(250, 204, 21, 0.05);
+  border: 1px solid rgba(250, 204, 21, 0.15);
+  border-radius: 6px;
+  color: var(--ccx-text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ── AI Title chip in session header ── */
+.ccx-aititle-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(124, 92, 255, 0.08);
+  border: 1px solid rgba(124, 92, 255, 0.2);
+  color: var(--ccx-text-muted);
+  font-size: 11px;
+  cursor: default;
+}
+.ccx-aititle-note__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ccx-accent-soft);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
 </style>
 {% endblock %}
 {% block breadcrumb %}
@@ -135,6 +205,9 @@
     {% if show_source_split %}
     · <span class="ccx-badge ccx-badge--source ccx-badge--{{ session.source }}" title="{% if session.bedrock_cost %}Bedrock {{ format_cost(session.bedrock_cost) }}{% endif %}{% if session.bedrock_cost and session.api_cost %} · {% endif %}{% if session.api_cost %}API {{ format_cost(session.api_cost) }}{% endif %}">{{ source_label(session.source) }}</span>
     {% endif %}
+    {% if session.ai_title_event %}
+    · <span class="ccx-aititle-note" title="AI-generated title: &quot;{{ session.ai_title_event.ai_title }}&quot; — LLM call cost not tracked"><span class="ccx-aititle-note__dot"></span>AI title (cost not tracked)</span>
+    {% endif %}
   </div>
 </div>
 
@@ -188,6 +261,16 @@
     <span class="ccx-compaction-bar__label">compact <i class="ccx-compaction-bar__info" data-tip="{{ _tip }}">ⓘ</i></span>
     <hr class="ccx-compaction-bar__line">
   </div>
+  {% elif ex.type == "away_summary" %}
+  {% set ev = ex.event %}
+  <details class="ccx-away-bar">
+    <summary class="ccx-away-bar__header">
+      <hr class="ccx-away-bar__line">
+      <span class="ccx-away-bar__label"><i class="ccx-away-bar__chevron">▶</i> away recap <span style="color:var(--ccx-text-muted);font-size:10px;">· cost not tracked</span></span>
+      <hr class="ccx-away-bar__line">
+    </summary>
+    <div class="ccx-away-bar__body">{{ ev.content }}</div>
+  </details>
   {% else %}
   {% set ex_date = (ex.user_turn.timestamp[:10] if ex.user_turn and ex.user_turn.timestamp else (ex.final_turn.timestamp[:10] if ex.final_turn and ex.final_turn.timestamp else "")) %}
   <div class="ccx-exchange" data-date="{{ ex_date }}">
