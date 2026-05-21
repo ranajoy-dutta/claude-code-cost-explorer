@@ -1,5 +1,18 @@
 {% extends "base.html" %}
 {% block title %}{{ session.title }} — Claude Code Cost Explorer{% endblock %}
+{% block extra_head %}
+<style>
+@keyframes ccx-exchange-glow {
+  0%   { background: rgba(124,92,255,0.10); box-shadow: 0 0 0 1px rgba(124,92,255,0.18); }
+  60%  { background: rgba(124,92,255,0.06); box-shadow: 0 0 0 1px rgba(124,92,255,0.08); }
+  100% { background: transparent;           box-shadow: none; }
+}
+.ccx-exchange--highlight {
+  border-radius: 10px;
+  animation: ccx-exchange-glow 2.2s ease forwards;
+}
+</style>
+{% endblock %}
 {% block breadcrumb %}
 <span class="ccx-header__sep">/</span>
 <span class="ccx-header__crumb"><a href="/">All Days</a></span>
@@ -112,7 +125,8 @@
 <h2>Conversation</h2>
 <div class="ccx-conversation">
   {% for ex in exchanges %}
-  <div class="ccx-exchange">
+  {% set ex_date = (ex.user_turn.timestamp[:10] if ex.user_turn and ex.user_turn.timestamp else (ex.final_turn.timestamp[:10] if ex.final_turn and ex.final_turn.timestamp else "")) %}
+  <div class="ccx-exchange" data-date="{{ ex_date }}">
 
     {# ── Vertical spine that runs through the whole exchange ── #}
     <div class="ccx-exchange__spine"></div>
@@ -498,6 +512,16 @@ if (sessionTitleInput) {
     }
   });
 }
+{% if highlight_date %}
+(function() {
+  var target = document.querySelector('.ccx-exchange[data-date="{{ highlight_date }}"]');
+  if (!target) return;
+  var HEADER_H = 48 + 12;
+  var top = target.getBoundingClientRect().top + window.scrollY - HEADER_H;
+  window.scrollTo({ top: top, behavior: 'smooth' });
+  target.classList.add('ccx-exchange--highlight');
+})();
+{% endif %}
 function copySessionId(chip) {
   const id = chip.dataset.sessionId;
   const label = chip.querySelector('.ccx-session-id-chip__text');

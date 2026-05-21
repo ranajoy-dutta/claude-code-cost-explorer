@@ -308,14 +308,29 @@ def _load_subagents(session_jsonl_path: str) -> dict:
     return result
 
 
+_SYSTEM_INJECTED_PREFIXES = (
+    "[Request",
+    "<task-notification>",
+    "<user-prompt-submit-hook>",
+    "<system-reminder>",
+    "Base directory for this skill:",
+)
+
+
+def _is_system_text(text: str) -> bool:
+    return any(text.startswith(p) for p in _SYSTEM_INJECTED_PREFIXES)
+
+
 def _extract_user_prompt(content) -> str:
     if isinstance(content, str):
-        return content[:120]
+        if not _is_system_text(content):
+            return content[:120]
+        return ""
     if isinstance(content, list):
         for item in content:
             if isinstance(item, dict) and item.get("type") == "text":
                 text = item.get("text", "")
-                if text and not text.startswith("[Request"):
+                if text and not _is_system_text(text):
                     return text[:120]
     return ""
 
@@ -469,10 +484,10 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
                     for item in content:
                         if isinstance(item, dict) and item.get("type") == "text":
                             t = item.get("text", "")
-                            if t and not t.startswith("[Request"):
+                            if t and not _is_system_text(t):
                                 pending_user_prompt_full = t
                                 break
-                elif isinstance(content, str) and not content.startswith("[Request"):
+                elif isinstance(content, str) and not _is_system_text(content):
                     pending_user_prompt_full = content
         elif rtype == "assistant":
             parent_uuid = r.get("parentUuid", "")
@@ -686,29 +701,42 @@ def build_day_summaries(
 ) -> list[DaySummary]:
     days: dict[str, DaySummary] = {}
     for s in sessions:
-        d = s.date
-        if not d or (from_date and d < from_date) or (to_date and d > to_date):
-            continue
-        if d not in days:
-            days[d] = DaySummary(date=d)
-        day = days[d]
-        day.total_cost += s.total_cost
-        day.bedrock_cost += s.bedrock_cost
-        day.api_cost += s.api_cost
-        day.session_count += 1
-        day.message_count += s.message_count
-        day.total_input_tokens += s.total_input_tokens
-        day.total_output_tokens += s.total_output_tokens
-        day.sessions.append(s)
+        dates_seen: set = set()
+        for turn in s.turns:
+            d = turn.timestamp[:10] if turn.timestamp else ""
+            if not d or (from_date and d < from_date) or (to_date and d > to_date):
+                continue
+            if d not in days:
+                days[d] = DaySummary(date=d)
+            day = days[d]
+            day.total_cost += turn.cost_usd
+            if turn.source == "bedrock":
+                day.bedrock_cost += turn.cost_usd
+            else:
+                day.api_cost += turn.cost_usd
+            day.message_count += 1
+            day.total_input_tokens += turn.usage.get("input_tokens", 0)
+            day.total_output_tokens += turn.usage.get("output_tokens", 0)
+            if d not in dates_seen:
+                dates_seen.add(d)
+                day.session_count += 1
+                day.sessions.append(s)
     return sorted(days.values(), key=lambda x: x.date, reverse=True)
 
 
 def get_sessions_for_date(sessions: list[SessionData], date: str) -> list[SessionData]:
-    return sorted(
-        [s for s in sessions if s.date == date],
-        key=lambda s: s.first_timestamp,
-        reverse=True,
-    )
+    def _first_ts_on_date(s: SessionData) -> str:
+        for t in s.turns:
+            if t.timestamp and t.timestamp[:10] == date:
+                return t.timestamp
+        return s.first_timestamp
+
+    matching = [
+        s
+        for s in sessions
+        if any(t.timestamp and t.timestamp[:10] == date for t in s.turns)
+    ]
+    return sorted(matching, key=_first_ts_on_date, reverse=True)
 
 
 def get_session_by_id(

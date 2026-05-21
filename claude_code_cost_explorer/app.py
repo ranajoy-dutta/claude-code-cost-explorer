@@ -315,16 +315,41 @@ def day_sessions_view(date):
     day_sessions = get_sessions_for_date(sessions, date)
     if not day_sessions:
         abort(404)
-    day_sessions = _sort_items(day_sessions, sort_by, sort_order, SESSION_SORTS)
+
+    day_costs: dict[str, float] = {}
+    day_bedrock: dict[str, float] = {}
+    day_api: dict[str, float] = {}
+    for s in day_sessions:
+        dc = db = da = 0.0
+        for t in s.turns:
+            if t.timestamp and t.timestamp[:10] == date:
+                dc += t.cost_usd
+                if t.source == "bedrock":
+                    db += t.cost_usd
+                else:
+                    da += t.cost_usd
+        day_costs[s.session_id] = dc
+        day_bedrock[s.session_id] = db
+        day_api[s.session_id] = da
+
+    day_session_sorts = dict(SESSION_SORTS)
+    day_session_sorts["cost"] = lambda s: day_costs.get(s.session_id, 0.0)
+    day_session_sorts["bedrock"] = lambda s: day_bedrock.get(s.session_id, 0.0)
+    day_session_sorts["api"] = lambda s: day_api.get(s.session_id, 0.0)
+    day_sessions = _sort_items(day_sessions, sort_by, sort_order, day_session_sorts)
+
     return render_template(
         "sessions.html",
         date=date,
         sessions=day_sessions,
         sort_by=sort_by,
         sort_order=sort_order,
-        total_cost=sum(s.total_cost for s in day_sessions),
-        total_bedrock_cost=sum(s.bedrock_cost for s in day_sessions),
-        total_api_cost=sum(s.api_cost for s in day_sessions),
+        day_costs=day_costs,
+        day_bedrock=day_bedrock,
+        day_api=day_api,
+        total_cost=sum(day_costs.values()),
+        total_bedrock_cost=sum(day_bedrock.values()),
+        total_api_cost=sum(day_api.values()),
     )
 
 
@@ -343,7 +368,13 @@ def session_detail_view(session_id):
             abort(500)
         return redirect(url_for("session_detail_view", session_id=session_id))
     exchanges = _build_exchanges(session.turns)
-    return render_template("session.html", session=session, exchanges=exchanges)
+    highlight_date = request.args.get("from_date", "")
+    return render_template(
+        "session.html",
+        session=session,
+        exchanges=exchanges,
+        highlight_date=highlight_date,
+    )
 
 
 @app.route("/session/<session_id>/turn/<turn_uuid>")
