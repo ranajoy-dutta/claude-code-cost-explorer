@@ -291,3 +291,98 @@ class TestBuildExchanges:
         assert len(result) == 2
         assert result[0]["type"] == "compaction"
         assert result[1]["type"] == "exchange"
+
+    def test_away_summary_inserted_between_exchanges(self):
+        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.reader import Turn, AwaySummaryEvent
+
+        turns = [
+            Turn(
+                uuid="t1",
+                timestamp="2025-10-25T10:00:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="first",
+            ),
+            Turn(
+                uuid="t2",
+                timestamp="2025-10-25T10:05:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="second",
+            ),
+        ]
+        away_events = [
+            AwaySummaryEvent(
+                timestamp="2025-10-25T10:02:00.000Z", content="We were working on X."
+            )
+        ]
+        result = _build_exchanges(turns, [], away_events)
+        assert len(result) == 3
+        assert result[0]["type"] == "exchange"
+        assert result[1]["type"] == "away_summary"
+        assert result[1]["event"].content == "We were working on X."
+        assert result[2]["type"] == "exchange"
+
+    def test_away_summary_and_compaction_sorted_together(self):
+        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.reader import (
+            Turn,
+            CompactionEvent,
+            AwaySummaryEvent,
+        )
+
+        turns = [
+            Turn(
+                uuid="t1",
+                timestamp="2025-10-25T10:00:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="msg",
+            ),
+            Turn(
+                uuid="t2",
+                timestamp="2025-10-25T10:10:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="msg2",
+            ),
+        ]
+        compaction = [
+            CompactionEvent(
+                timestamp="2025-10-25T10:06:00.000Z",
+                trigger="auto",
+                pre_tokens=1000,
+                post_tokens=100,
+                duration_ms=5000,
+            )
+        ]
+        away = [
+            AwaySummaryEvent(timestamp="2025-10-25T10:03:00.000Z", content="recap text")
+        ]
+        result = _build_exchanges(turns, compaction, away)
+        assert len(result) == 4
+        types = [r["type"] for r in result]
+        assert types == ["exchange", "away_summary", "compaction", "exchange"]
+
+    def test_away_summary_none_treated_as_empty(self):
+        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.reader import Turn
+
+        turns = [
+            Turn(
+                uuid="t1",
+                timestamp="2025-10-25T10:00:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="hi",
+            ),
+        ]
+        result = _build_exchanges(turns, [], None)
+        assert len(result) == 1
+        assert result[0]["type"] == "exchange"

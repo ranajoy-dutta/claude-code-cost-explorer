@@ -174,6 +174,81 @@ class TestGetSessionById:
         assert get_session_by_id([s], "missing") is None
 
 
+class TestAwaySummaryEvents:
+    def test_away_summary_parsed(self, tmp_path):
+        from claude_code_cost_explorer.reader import AwaySummaryEvent
+
+        jsonl = tmp_path / "sess.jsonl"
+        jsonl.write_text(
+            '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"uuid":"u1","parentUuid":null,"timestamp":"2025-10-25T10:00:00.000Z","sessionId":"s1","cwd":"/tmp","slug":"s"}\n'
+            '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hello"}],"model":"claude-sonnet-4-6","usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2025-10-25T10:01:00.000Z","sessionId":"s1"}\n'
+            '{"type":"system","subtype":"away_summary","content":"We were fixing a bug.","timestamp":"2025-10-25T10:02:00.000Z","uuid":"as1","sessionId":"s1","isSidechain":false,"isMeta":false,"parentUuid":"a1"}\n'
+        )
+        s = parse_session_file(str(jsonl), "/tmp")
+        assert len(s.away_summary_events) == 1
+        ev = s.away_summary_events[0]
+        assert isinstance(ev, AwaySummaryEvent)
+        assert ev.content == "We were fixing a bug."
+        assert ev.timestamp == "2025-10-25T10:02:00.000Z"
+
+    def test_multiple_away_summaries(self, tmp_path):
+        jsonl = tmp_path / "sess.jsonl"
+        jsonl.write_text(
+            '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"uuid":"u1","parentUuid":null,"timestamp":"2025-10-25T10:00:00.000Z","sessionId":"s1","cwd":"/tmp","slug":"s"}\n'
+            '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hello"}],"model":"claude-sonnet-4-6","usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2025-10-25T10:01:00.000Z","sessionId":"s1"}\n'
+            '{"type":"system","subtype":"away_summary","content":"First recap.","timestamp":"2025-10-25T10:02:00.000Z","uuid":"as1","sessionId":"s1","isSidechain":false,"isMeta":false,"parentUuid":"a1"}\n'
+            '{"type":"system","subtype":"away_summary","content":"Second recap.","timestamp":"2025-10-25T10:05:00.000Z","uuid":"as2","sessionId":"s1","isSidechain":false,"isMeta":false,"parentUuid":"a1"}\n'
+        )
+        s = parse_session_file(str(jsonl), "/tmp")
+        assert len(s.away_summary_events) == 2
+        assert s.away_summary_events[0].content == "First recap."
+        assert s.away_summary_events[1].content == "Second recap."
+
+    def test_empty_away_summary_skipped(self, tmp_path):
+        jsonl = tmp_path / "sess.jsonl"
+        jsonl.write_text(
+            '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hi"}]},"uuid":"u1","parentUuid":null,"timestamp":"2025-10-25T10:00:00.000Z","sessionId":"s1","cwd":"/tmp","slug":"s"}\n'
+            '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hello"}],"model":"claude-sonnet-4-6","usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2025-10-25T10:01:00.000Z","sessionId":"s1"}\n'
+            '{"type":"system","subtype":"away_summary","content":"","timestamp":"2025-10-25T10:02:00.000Z","uuid":"as1","sessionId":"s1"}\n'
+        )
+        s = parse_session_file(str(jsonl), "/tmp")
+        assert s.away_summary_events == []
+
+    def test_no_away_summaries_on_plain_session(self):
+        s = parse_session_file(os.path.join(FIXTURES, "session_simple.jsonl"), "/tmp")
+        assert s.away_summary_events == []
+
+
+class TestAiTitleEvent:
+    def test_ai_title_event_stored(self, tmp_path):
+        from claude_code_cost_explorer.reader import AiTitleEvent
+
+        jsonl = tmp_path / "sess.jsonl"
+        jsonl.write_text(
+            '{"type":"ai-title","aiTitle":"Investigate deployment pipeline","sessionId":"s1"}\n'
+            '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"fix deploy"}]},"uuid":"u1","parentUuid":null,"timestamp":"2025-11-01T09:00:00.000Z","sessionId":"s1","cwd":"/tmp"}\n'
+            '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-sonnet-4-6","usage":{"input_tokens":5,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2025-11-01T09:00:05.000Z","sessionId":"s1"}\n'
+        )
+        s = parse_session_file(str(jsonl), "/tmp")
+        assert s.ai_title_event is not None
+        assert isinstance(s.ai_title_event, AiTitleEvent)
+        assert s.ai_title_event.ai_title == "Investigate deployment pipeline"
+
+    def test_no_ai_title_event_when_absent(self):
+        s = parse_session_file(os.path.join(FIXTURES, "session_simple.jsonl"), "/tmp")
+        assert s.ai_title_event is None
+
+    def test_custom_title_takes_priority_over_ai_title(self):
+        # session_with_title.jsonl has both ai-title and custom-title
+        s = parse_session_file(
+            os.path.join(FIXTURES, "session_with_title.jsonl"), "/tmp"
+        )
+        assert s.title == "Deploy pipeline fix"
+        # but ai_title_event is still stored
+        assert s.ai_title_event is not None
+        assert s.ai_title_event.ai_title == "Investigate deployment pipeline"
+
+
 class TestCompactionEvents:
     def test_compact_boundary_parsed(self):
         from claude_code_cost_explorer.reader import CompactionEvent
