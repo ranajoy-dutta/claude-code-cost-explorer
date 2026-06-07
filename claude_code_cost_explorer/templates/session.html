@@ -131,6 +131,13 @@ details[open] .ccx-away-bar__chevron {
   opacity: 0.6;
   flex-shrink: 0;
 }
+.ccx-nested-workflows {
+  margin-left: 24px;
+  padding-left: 12px;
+  border-left: 1.5px dashed rgba(124, 92, 255, 0.4);
+  margin-top: 6px;
+  margin-bottom: 12px;
+}
 </style>
 {% endblock %}
 {% block breadcrumb %}
@@ -271,6 +278,72 @@ details[open] .ccx-away-bar__chevron {
     </summary>
     <div class="ccx-away-bar__body">{{ ev.content }}</div>
   </details>
+  {% elif ex.type == "unlinked_subagent" %}
+  {% set sa = ex.subagent %}
+  <div class="ccx-exchange" data-date="{{ sa.timestamp[:10] }}">
+    <div class="ccx-exchange__spine"></div>
+    <div class="ccx-exchange__agents" style="width: 100%;">
+      <div class="ccx-agent-row">
+        <div class="ccx-agent-dot" style="background: var(--ccx-accent-soft); border-color: var(--ccx-accent);"></div>
+        <details class="ccx-agent-details">
+          <summary class="ccx-agent-summary" style="background: rgba(124, 92, 255, 0.05); border: 1px dashed rgba(124, 92, 255, 0.3);">
+            <span class="ccx-agent-summary__icon">⚡</span>
+            <span class="ccx-agent-summary__label" style="font-weight: 600;">Background Workflow: {{ sa.description or "Agent Run" }} ({{ sa.turns|length }} step{% if sa.turns|length > 1 %}s{% endif %})</span>
+            <span class="ccx-agent-summary__meta">
+              <span style="color: var(--ccx-text-muted); font-size: 11px; margin-right: 12px;">{{ sa.timestamp[:19].replace("T", " ") }}</span>
+              <span class="ccx-agent-summary__cost {{ cost_severity(sa.total_cost) }}">{{ format_cost(sa.total_cost) }}</span>
+            </span>
+          </summary>
+          <div class="ccx-agent-children" style="border-left: 2px dashed rgba(124, 92, 255, 0.2);">
+            {# Hoist all commentary (text blocks) into a collapsible section #}
+            {% set ns_sa = namespace(has_text=false) %}
+            {% for st in sa.turns %}{% if st.text_blocks %}{% set ns_sa.has_text = true %}{% endif %}{% endfor %}
+            {% if ns_sa.has_text %}
+            <details class="ccx-sa-commentary" style="margin-bottom: 12px;">
+              <summary>💬 Commentary</summary>
+              <div class="ccx-sa-commentary-body">
+                {% for st in sa.turns %}
+                  {% for txt in st.text_blocks %}{{ txt }}<br>
+                  {% endfor %}
+                {% endfor %}
+              </div>
+            </details>
+            {% endif %}
+
+            {# Tool calls listed cleanly #}
+            <div class="ccx-sa-calls">
+            {% for st in sa.turns %}
+              {% for tu in st.tool_uses %}
+              <div class="ccx-sa-row">
+                <details class="ccx-sa-details">
+                  <summary class="ccx-sa-summary">
+                    <span class="ccx-sa-icon">🔧</span>
+                    <span class="ccx-sa-label">{{ tu.name }}</span>
+                    {% set sa_input = tu.get("input", {}) %}
+                    {% if sa_input.get("url") %}<span class="ccx-sa-meta">{{ sa_input.get("url","")[:100] }}</span>
+                    {% elif sa_input.get("file_path") %}<span class="ccx-sa-meta">{{ sa_input.get("file_path","") }}</span>
+                    {% elif sa_input.get("query") %}<span class="ccx-sa-meta">{{ sa_input.get("query","")[:100] }}</span>
+                    {% elif sa_input.get("prompt") %}<span class="ccx-sa-meta">{{ sa_input.get("prompt","")[:100] }}</span>{% endif %}
+                  </summary>
+                  <div class="ccx-sa-body">
+                    <pre class="ccx-child-pre">{{ sa_input | tojson(indent=2) }}</pre>
+                    {% if tu.get("result") %}
+                    <div class="ccx-sa-result-label">Result</div>
+                    {% for item in tu.get("result", []) %}
+                      {% if item.get("type") == "text" %}<pre class="ccx-child-pre">{{ item.get("text","") }}</pre>{% endif %}
+                    {% endfor %}
+                    {% endif %}
+                  </div>
+                </details>
+              </div>
+              {% endfor %}
+            {% endfor %}
+            </div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
   {% else %}
   {% set ex_date = (ex.user_turn.timestamp[:10] if ex.user_turn and ex.user_turn.timestamp else (ex.final_turn.timestamp[:10] if ex.final_turn and ex.final_turn.timestamp else "")) %}
   <div class="ccx-exchange" data-date="{{ ex_date }}">
@@ -472,6 +545,70 @@ details[open] .ccx-away-bar__chevron {
                         {% endif %}
                       </div>
                     </details>
+                  </div>
+                  {% endif %}
+
+                  {# Render workflow subagents if any #}
+                  {% if tc.subagents %}
+                  <div class="ccx-nested-workflows">
+                    {% for sa in tc.subagents %}
+                    <div class="ccx-child-row ccx-child-row--subagent" style="margin-left: 0;">
+                      <div class="ccx-child-dot"></div>
+                      <details class="ccx-child-details">
+                        <summary class="ccx-child-summary">
+                          <span class="ccx-child-icon">🤖</span>
+                          <span class="ccx-child-label">{{ sa.description or "Background Workflow" }}</span>
+                          <span class="ccx-child-chars" style="color:var(--ccx-text-muted);">{{ sa.total_tool_uses }} tool calls · {{ sa.agent_type }}</span>
+                          {% if sa.total_cost %}<span class="ccx-child-chars">·</span><span class="{{ cost_severity(sa.total_cost) }}" style="font-family:'JetBrains Mono',monospace;font-size:10px;">{{ format_cost(sa.total_cost) }}</span>{% endif %}
+                        </summary>
+                        <div class="ccx-child-body ccx-subagent-body">
+                          {# Hoist all commentary (text blocks) into a collapsible section #}
+                          {% set ns_sa = namespace(has_text=false) %}
+                          {% for st in sa.turns %}{% if st.text_blocks %}{% set ns_sa.has_text = true %}{% endif %}{% endfor %}
+                          {% if ns_sa.has_text %}
+                          <details class="ccx-sa-commentary">
+                            <summary>💬 Commentary</summary>
+                            <div class="ccx-sa-commentary-body">
+                              {% for st in sa.turns %}
+                                {% for txt in st.text_blocks %}{{ txt }}<br>
+                                {% endfor %}
+                              {% endfor %}
+                            </div>
+                          </details>
+                          {% endif %}
+                          {# Tool calls listed cleanly without text interruptions #}
+                          <div class="ccx-sa-calls">
+                          {% for st in sa.turns %}
+                            {% for tu in st.tool_uses %}
+                            <div class="ccx-sa-row">
+                              <details class="ccx-sa-details">
+                                <summary class="ccx-sa-summary">
+                                  <span class="ccx-sa-icon">🔧</span>
+                                  <span class="ccx-sa-label">{{ tu.name }}</span>
+                                  {% set sa_input = tu.get("input", {}) %}
+                                  {% if sa_input.get("url") %}<span class="ccx-sa-meta">{{ sa_input.get("url","")[:100] }}</span>
+                                  {% elif sa_input.get("file_path") %}<span class="ccx-sa-meta">{{ sa_input.get("file_path","") }}</span>
+                                  {% elif sa_input.get("query") %}<span class="ccx-sa-meta">{{ sa_input.get("query","")[:100] }}</span>
+                                  {% elif sa_input.get("prompt") %}<span class="ccx-sa-meta">{{ sa_input.get("prompt","")[:100] }}</span>{% endif %}
+                                </summary>
+                                <div class="ccx-sa-body">
+                                  <pre class="ccx-child-pre">{{ sa_input | tojson(indent=2) }}</pre>
+                                  {% if tu.get("result") %}
+                                  <div class="ccx-sa-result-label">Result</div>
+                                  {% for item in tu.get("result", []) %}
+                                    {% if item.get("type") == "text" %}<pre class="ccx-child-pre">{{ item.get("text","") }}</pre>{% endif %}
+                                  {% endfor %}
+                                  {% endif %}
+                                </div>
+                              </details>
+                            </div>
+                            {% endfor %}
+                          {% endfor %}
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+                    {% endfor %}
                   </div>
                   {% endif %}
                   {% endif %}

@@ -149,6 +149,25 @@
     .ccx-refresh-btn svg {
       transition: transform 0.3s ease;
     }
+    .ccx-settings-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ccx-text-muted);
+      background: transparent;
+      border: 1px solid var(--ccx-border);
+      border-radius: var(--ccx-radius);
+      cursor: pointer;
+      transition: all var(--ccx-transition);
+    }
+    .ccx-settings-btn:hover {
+      color: var(--ccx-accent-soft);
+      border-color: var(--ccx-accent);
+      background: var(--ccx-glow);
+    }
 
     /* ── Main Container ── */
     .ccx-main {
@@ -1412,6 +1431,114 @@
     }
     .ccx-modal__full-link:hover { color: var(--ccx-accent-soft); }
 
+    /* Settings modal */
+    .ccx-settings-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+    }
+    .ccx-settings-modal.is-open {
+      display: flex;
+    }
+    .ccx-settings-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+    }
+    .ccx-settings-dialog {
+      position: relative;
+      background: var(--ccx-surface);
+      border: 1px solid var(--ccx-border);
+      border-radius: var(--ccx-radius-lg);
+      width: 400px;
+      max-width: calc(100vw - 32px);
+      overflow: hidden;
+    }
+    .ccx-settings-header {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--ccx-border);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--ccx-text);
+    }
+    .ccx-settings-body {
+      padding: 18px;
+    }
+    .ccx-settings-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--ccx-accent-soft);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+    .ccx-settings-block {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--ccx-border);
+      border-radius: var(--ccx-radius);
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .ccx-settings-row {
+      display: flex;
+      align-items: center;
+      padding: 9px 14px;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .ccx-settings-row:last-child { border-bottom: none; }
+    .ccx-settings-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .ccx-settings-name {
+      font-size: 12px;
+      color: var(--ccx-text-muted);
+      flex: 1;
+    }
+    .ccx-settings-hint {
+      font-size: 12px;
+      color: var(--ccx-text-muted);
+      opacity: 0.5;
+    }
+    .ccx-settings-input {
+      width: 64px;
+      padding: 3px 7px;
+      background: var(--ccx-bg);
+      border: 1px solid var(--ccx-border);
+      border-radius: 4px;
+      color: var(--ccx-text);
+      font-size: 12px;
+      text-align: right;
+      font-family: inherit;
+      -moz-appearance: textfield;
+    }
+    .ccx-settings-input::-webkit-inner-spin-button,
+    .ccx-settings-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .ccx-settings-input:focus {
+      outline: none;
+      border-color: var(--ccx-accent);
+    }
+    .ccx-settings-error {
+      font-size: 12px;
+      color: var(--ccx-cost-critical);
+      margin-bottom: 12px;
+      display: none;
+    }
+    .ccx-settings-error.is-visible { display: block; }
+    .ccx-settings-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      padding-top: 14px;
+      border-top: 1px solid var(--ccx-border);
+    }
+
     /* ── Scroll-to-bottom button ── */
     .ccx-scroll-bottom {
       position: fixed;
@@ -1485,7 +1612,7 @@
       Claude Code Cost Explorer
     </a>
     {% block breadcrumb %}{% endblock %}
-    <div style="margin-left:auto;">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
       <a href="javascript:location.reload()" class="ccx-refresh-btn" title="Refresh data">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10"/>
@@ -1494,8 +1621,58 @@
         </svg>
         <span>Refresh</span>
       </a>
+      <button class="ccx-settings-btn" id="ccx-settings-open" title="Settings" aria-label="Settings">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
     </div>
   </header>
+  <!-- Settings modal -->
+  <div class="ccx-settings-modal" id="ccx-settings-modal" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="ccx-settings-overlay" id="ccx-settings-overlay"></div>
+    <div class="ccx-settings-dialog">
+      <div class="ccx-settings-header">Settings</div>
+      <div class="ccx-settings-body">
+        <div class="ccx-settings-section-label">Cost thresholds</div>
+        <div class="ccx-settings-block">
+          <div class="ccx-settings-row">
+            <span class="ccx-settings-dot" style="background:var(--ccx-cost-low);"></span>
+            <span class="ccx-settings-name">Low</span>
+            <span class="ccx-settings-hint">up to $</span>
+            <input class="ccx-settings-input" id="ccx-thresh-low" type="number" min="0.01" step="0.01"
+              value="{{ get_cost_thresholds()['low'] }}" />
+          </div>
+          <div class="ccx-settings-row">
+            <span class="ccx-settings-dot" style="background:var(--ccx-cost-med);"></span>
+            <span class="ccx-settings-name">Medium</span>
+            <span class="ccx-settings-hint">up to $</span>
+            <input class="ccx-settings-input" id="ccx-thresh-med" type="number" min="0.01" step="0.01"
+              value="{{ get_cost_thresholds()['medium'] }}" />
+          </div>
+          <div class="ccx-settings-row">
+            <span class="ccx-settings-dot" style="background:var(--ccx-cost-high);"></span>
+            <span class="ccx-settings-name">High</span>
+            <span class="ccx-settings-hint">up to $</span>
+            <input class="ccx-settings-input" id="ccx-thresh-high" type="number" min="0.01" step="0.01"
+              value="{{ get_cost_thresholds()['high'] }}" />
+          </div>
+          <div class="ccx-settings-row">
+            <span class="ccx-settings-dot" style="background:var(--ccx-cost-critical);"></span>
+            <span class="ccx-settings-name">Critical</span>
+            <span class="ccx-settings-hint" id="ccx-thresh-critical-label">${{ "%.2f"|format(get_cost_thresholds()['high']) }} and above</span>
+          </div>
+        </div>
+        <div class="ccx-settings-error" id="ccx-settings-error"></div>
+        <div class="ccx-settings-actions">
+          <button class="ccx-refresh-btn" id="ccx-settings-reset">Reset</button>
+          <button class="ccx-refresh-btn" id="ccx-settings-cancel">Cancel</button>
+          <button class="ccx-refresh-btn" id="ccx-settings-save" style="color:#fff;background:rgba(124,92,255,0.85);border-color:rgba(124,92,255,0.5);">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <main class="ccx-main">{% block content %}{% endblock %}</main>
   <button class="ccx-scroll-bottom" id="ccx-scroll-bottom" title="Scroll to bottom" aria-label="Scroll to bottom">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1521,6 +1698,75 @@
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
     });
     update();
+  })();
+  </script>
+  <script>
+  (function() {
+    var modal = document.getElementById('ccx-settings-modal');
+    var overlay = document.getElementById('ccx-settings-overlay');
+    var openBtn = document.getElementById('ccx-settings-open');
+    var cancelBtn = document.getElementById('ccx-settings-cancel');
+    var saveBtn = document.getElementById('ccx-settings-save');
+    var resetBtn = document.getElementById('ccx-settings-reset');
+    var errorEl = document.getElementById('ccx-settings-error');
+    var inpLow = document.getElementById('ccx-thresh-low');
+    var inpMed = document.getElementById('ccx-thresh-med');
+    var inpHigh = document.getElementById('ccx-thresh-high');
+    var critLabel = document.getElementById('ccx-thresh-critical-label');
+
+    var DEFAULTS = { low: 1.0, medium: 5.0, high: 15.0 };
+
+    function open() { modal.classList.add('is-open'); inpLow.focus(); }
+    function close() { modal.classList.remove('is-open'); hideError(); }
+    function showError(msg) { errorEl.textContent = msg; errorEl.classList.add('is-visible'); }
+    function hideError() { errorEl.classList.remove('is-visible'); }
+
+    inpHigh.addEventListener('input', function() {
+      var v = parseFloat(this.value) || 0;
+      critLabel.textContent = '$' + v.toFixed(2) + ' and above';
+    });
+
+    openBtn.addEventListener('click', open);
+    overlay.addEventListener('click', close);
+    cancelBtn.addEventListener('click', close);
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && modal.classList.contains('is-open')) close();
+    });
+
+    resetBtn.addEventListener('click', function() {
+      inpLow.value = DEFAULTS.low.toFixed(2);
+      inpMed.value = DEFAULTS.medium.toFixed(2);
+      inpHigh.value = DEFAULTS.high.toFixed(2);
+      critLabel.textContent = '$' + DEFAULTS.high.toFixed(2) + ' and above';
+      hideError();
+    });
+
+    saveBtn.addEventListener('click', function() {
+      var low = parseFloat(inpLow.value);
+      var medium = parseFloat(inpMed.value);
+      var high = parseFloat(inpHigh.value);
+      if (isNaN(low) || isNaN(medium) || isNaN(high)) {
+        showError('All values must be numbers.'); return;
+      }
+      if (low <= 0 || medium <= 0 || high <= 0) {
+        showError('All thresholds must be positive.'); return;
+      }
+      if (!(low < medium && medium < high)) {
+        showError('Thresholds must increase: Low < Medium < High.'); return;
+      }
+      hideError();
+      fetch('/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ low: low, medium: medium, high: high })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) { close(); location.reload(); }
+        else { showError(data.error || 'Failed to save.'); }
+      })
+      .catch(function() { showError('Network error. Could not save settings.'); });
+    });
   })();
   </script>
 </body>

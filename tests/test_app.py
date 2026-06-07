@@ -386,3 +386,114 @@ class TestBuildExchanges:
         result = _build_exchanges(turns, [], None)
         assert len(result) == 1
         assert result[0]["type"] == "exchange"
+
+    def test_unlinked_subagent_inserted_by_timestamp(self):
+        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.reader import Turn, SubagentData
+
+        turns = [
+            Turn(
+                uuid="t1",
+                timestamp="2025-10-25T10:00:00.000Z",
+                model="m",
+                usage={},
+                cost_usd=0.0,
+                user_prompt="hi",
+            ),
+        ]
+        sa = SubagentData(
+            agent_id="a1",
+            description="desc",
+            agent_type="workflow",
+            turns=[],
+            timestamp="2025-10-25T10:02:00.000Z",
+        )
+        result = _build_exchanges(turns, [], None, [sa])
+        assert len(result) == 2
+        assert result[0]["type"] == "exchange"
+        assert result[1]["type"] == "unlinked_subagent"
+        assert result[1]["subagent"] is sa
+
+
+class TestSettings:
+    def test_load_settings_returns_defaults_when_missing(self, tmp_path, monkeypatch):
+        import claude_code_cost_explorer.app as app_mod
+
+        monkeypatch.setattr(
+            app_mod, "_SETTINGS_PATH", str(tmp_path / "ccx_settings.json")
+        )
+        monkeypatch.setattr(app_mod, "_settings_cache", None)
+        monkeypatch.setattr(app_mod, "_settings_cache_mtime", None)
+        settings = app_mod._load_settings()
+        assert settings == {"low": 1.0, "medium": 5.0, "high": 15.0}
+
+    def test_load_settings_reads_file(self, tmp_path, monkeypatch):
+        import claude_code_cost_explorer.app as app_mod
+
+        settings_file = tmp_path / "ccx_settings.json"
+        settings_file.write_text(
+            '{"cost_thresholds": {"low": 2.0, "medium": 8.0, "high": 20.0}}'
+        )
+        monkeypatch.setattr(app_mod, "_SETTINGS_PATH", str(settings_file))
+        monkeypatch.setattr(app_mod, "_settings_cache", None)
+        monkeypatch.setattr(app_mod, "_settings_cache_mtime", None)
+        settings = app_mod._load_settings()
+        assert settings == {"low": 2.0, "medium": 8.0, "high": 20.0}
+
+    def test_load_settings_ignores_malformed_json(self, tmp_path, monkeypatch):
+        import claude_code_cost_explorer.app as app_mod
+
+        settings_file = tmp_path / "ccx_settings.json"
+        settings_file.write_text("not json")
+        monkeypatch.setattr(app_mod, "_SETTINGS_PATH", str(settings_file))
+        monkeypatch.setattr(app_mod, "_settings_cache", None)
+        monkeypatch.setattr(app_mod, "_settings_cache_mtime", None)
+        settings = app_mod._load_settings()
+        assert settings == {"low": 1.0, "medium": 5.0, "high": 15.0}
+
+    def test_cost_severity_uses_custom_thresholds(self, monkeypatch):
+        import claude_code_cost_explorer.app as app_mod
+
+        monkeypatch.setattr(
+            app_mod,
+            "_load_settings",
+            lambda: {"low": 2.0, "medium": 10.0, "high": 25.0},
+        )
+        assert app_mod._cost_severity(1.5) == "cost-low"
+        assert app_mod._cost_severity(5.0) == "cost-med"
+        assert app_mod._cost_severity(15.0) == "cost-high"
+        assert app_mod._cost_severity(30.0) == "cost-critical"
+
+    def test_post_settings_saves_valid_thresholds(self, client, tmp_path, monkeypatch):
+        import json
+        import claude_code_cost_explorer.app as app_mod
+
+        monkeypatch.setattr(
+            app_mod, "_SETTINGS_PATH", str(tmp_path / "ccx_settings.json")
+        )
+        monkeypatch.setattr(app_mod, "_settings_cache", None)
+        monkeypatch.setattr(app_mod, "_settings_cache_mtime", None)
+        resp = client.post("/settings", json={"low": 2.0, "medium": 8.0, "high": 20.0})
+        assert resp.status_code == 200
+        assert resp.get_json() == {"ok": True}
+        saved = json.loads((tmp_path / "ccx_settings.json").read_text())
+        assert saved["cost_thresholds"] == {"low": 2.0, "medium": 8.0, "high": 20.0}
+
+    def test_post_settings_rejects_wrong_order(self, client, monkeypatch, tmp_path):
+        import claude_code_cost_explorer.app as app_mod
+
+        monkeypatch.setattr(
+            app_mod, "_SETTINGS_PATH", str(tmp_path / "ccx_settings.json")
+        )
+        resp = client.post("/settings", json={"low": 10.0, "medium": 5.0, "high": 20.0})
+        assert resp.status_code == 400
+        assert "error" in resp.get_json()
+
+    def test_post_settings_rejects_non_positive(self, client, monkeypatch, tmp_path):
+        import claude_code_cost_explorer.app as app_mod
+
+        monkeypatch.setattr(
+            app_mod, "_SETTINGS_PATH", str(tmp_path / "ccx_settings.json")
+        )
+        resp = client.post("/settings", json={"low": 0.0, "medium": 5.0, "high": 15.0})
+        assert resp.status_code == 400
