@@ -1,6 +1,6 @@
 """Claude Code Cost Tracker. Run: ccx"""
 
-from flask import Flask, render_template, request, abort, redirect, url_for
+from flask import Flask, render_template, request, abort, redirect, url_for, jsonify
 from claude_code_cost_explorer.reader import (
     load_all_sessions as _load_all_sessions,
     build_day_summaries,
@@ -11,6 +11,7 @@ from claude_code_cost_explorer.reader import (
     append_custom_session_title,
 )
 
+import json
 import os
 import pathlib
 from datetime import date, timedelta
@@ -143,12 +144,55 @@ def _format_duration(seconds: float) -> str:
     return f"{minutes}m {secs}s"
 
 
+_SETTINGS_PATH = os.path.expanduser("~/.claude/ccx_settings.json")
+_DEFAULT_THRESHOLDS = {"low": 1.0, "medium": 5.0, "high": 15.0}
+
+_settings_cache: dict | None = None
+_settings_cache_mtime: int | None = None
+
+
+def _load_settings() -> dict:
+    global _settings_cache, _settings_cache_mtime
+    try:
+        mtime = os.stat(_SETTINGS_PATH).st_mtime_ns
+    except OSError:
+        mtime = None
+    if _settings_cache is not None and mtime == _settings_cache_mtime:
+        return _settings_cache
+    try:
+        with open(_SETTINGS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        t = data.get("cost_thresholds", {})
+        result = {
+            "low": float(t["low"]),
+            "medium": float(t["medium"]),
+            "high": float(t["high"]),
+        }
+    except Exception:
+        result = dict(_DEFAULT_THRESHOLDS)
+        mtime = None
+    _settings_cache = result
+    _settings_cache_mtime = mtime
+    return result
+
+
+def _save_settings(low: float, medium: float, high: float) -> None:
+    os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
+    with open(_SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(
+            {"cost_thresholds": {"low": low, "medium": medium, "high": high}},
+            f,
+            indent=2,
+        )
+
+
 def _cost_severity(cost: float) -> str:
-    if cost >= 15.0:
+    t = _load_settings()
+    if cost >= t["high"]:
         return "cost-critical"
-    if cost >= 5.0:
+    if cost >= t["medium"]:
         return "cost-high"
-    if cost >= 1.0:
+    if cost >= t["low"]:
         return "cost-med"
     return "cost-low"
 
@@ -194,13 +238,16 @@ def _action_label(turn) -> str:
     return "API Call"
 
 
-def _build_exchanges(turns, compaction_events, away_summary_events=None):
-    """Group turns into exchanges and interleave compaction/away_summary markers by timestamp.
+def _build_exchanges(
+    turns, compaction_events, away_summary_events=None, unlinked_subagents=None
+):
+    """Group turns into exchanges and interleave compaction/away_summary/unlinked_subagent markers by timestamp.
 
     Returns a list of dicts, each one of:
       {"type": "exchange", "user_turn": ..., "intermediate_turns": [...], "final_turn": ...}
       {"type": "compaction", "event": CompactionEvent}
       {"type": "away_summary", "event": AwaySummaryEvent}
+      {"type": "unlinked_subagent", "subagent": SubagentData}
     """
     raw_exchanges = []
     current = None
@@ -232,6 +279,8 @@ def _build_exchanges(turns, compaction_events, away_summary_events=None):
         marker_items.append({"type": "compaction", "event": ev})
     for ev in away_summary_events or []:
         marker_items.append({"type": "away_summary", "event": ev})
+    for sa in unlinked_subagents or []:
+        marker_items.append({"type": "unlinked_subagent", "subagent": sa})
 
     if not marker_items:
         return raw_exchanges
@@ -240,6 +289,8 @@ def _build_exchanges(turns, compaction_events, away_summary_events=None):
         if item.get("type") == "exchange":
             t = item["final_turn"]
             return t.timestamp if t else ""
+        elif item.get("type") == "unlinked_subagent":
+            return item["subagent"].timestamp
         return item["event"].timestamp
 
     merged = raw_exchanges + marker_items
@@ -271,6 +322,7 @@ app.jinja_env.globals.update(
     sort_url=_sort_url,
     source_label=_source_label,
     show_source_split=SHOW_SOURCE_SPLIT,
+    get_cost_thresholds=_load_settings,
 )
 
 
@@ -345,6 +397,16 @@ def day_sessions_view(date):
                     db += t.cost_usd
                 else:
                     da += t.cost_usd
+        for sa in s.unlinked_subagents:
+            for sat in sa.turns:
+                if sat.cost_usd == 0.0:
+                    continue
+                if sat.timestamp and sat.timestamp[:10] == date:
+                    dc += sat.cost_usd
+                    if sat.source == "bedrock":
+                        db += sat.cost_usd
+                    else:
+                        da += sat.cost_usd
         day_costs[s.session_id] = dc
         day_bedrock[s.session_id] = db
         day_api[s.session_id] = da
@@ -385,7 +447,10 @@ def session_detail_view(session_id):
             abort(500)
         return redirect(url_for("session_detail_view", session_id=session_id))
     exchanges = _build_exchanges(
-        session.turns, session.compaction_events, session.away_summary_events
+        session.turns,
+        session.compaction_events,
+        session.away_summary_events,
+        session.unlinked_subagents,
     )
     highlight_date = request.args.get("from_date", "")
     return render_template(
@@ -394,6 +459,23 @@ def session_detail_view(session_id):
         exchanges=exchanges,
         highlight_date=highlight_date,
     )
+
+
+@app.route("/settings", methods=["POST"])
+def settings_view():
+    data = request.get_json(silent=True) or {}
+    try:
+        low = float(data["low"])
+        medium = float(data["medium"])
+        high = float(data["high"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "low, medium, high must be numbers"}), 400
+    if not (low > 0 and medium > 0 and high > 0):
+        return jsonify({"error": "All thresholds must be positive"}), 400
+    if not (low < medium < high):
+        return jsonify({"error": "Thresholds must satisfy: low < medium < high"}), 400
+    _save_settings(low, medium, high)
+    return jsonify({"ok": True})
 
 
 @app.route("/session/<session_id>/turn/<turn_uuid>")

@@ -304,3 +304,126 @@ class TestCompactionEvents:
         assert s.compaction_events[0].trigger == "auto"
         assert s.compaction_events[1].trigger == "manual"
         assert s.message_count == 3
+
+
+def test_unlinked_subagent_cost_in_daily_summary():
+    from claude_code_cost_explorer.reader import SessionData, SubagentData, SubagentTurn
+    from claude_code_cost_explorer.reader import build_day_summaries
+
+    sa_turn = SubagentTurn(
+        uuid="sa-t1",
+        model="claude-sonnet-4-6",
+        tool_uses=[],
+        tool_results=[],
+        text_blocks=[],
+        timestamp="2026-06-02T10:00:00.000Z",
+        cost_usd=2.5,
+        source="bedrock",
+        usage={"input_tokens": 100, "output_tokens": 100},
+    )
+    sa = SubagentData(
+        agent_id="agent-1",
+        description="desc",
+        agent_type="workflow",
+        turns=[sa_turn],
+        total_tool_uses=0,
+        total_cost=2.5,
+        source="bedrock",
+        bedrock_cost=2.5,
+        api_cost=0.0,
+        timestamp="2026-06-02T10:00:00.000Z",
+        end_timestamp="2026-06-02T10:00:00.000Z",
+    )
+    session = SessionData(
+        session_id="session-1",
+        source_path="/tmp/session-1.jsonl",
+        project_path="/tmp",
+        project_name="test",
+        title="test-session",
+        turns=[],
+        total_cost=2.5,
+        unlinked_subagents=[sa],
+    )
+
+    days = build_day_summaries([session])
+    assert len(days) == 1
+    day = days[0]
+    assert day.date == "2026-06-02"
+    assert day.total_cost == 2.5
+    assert day.bedrock_cost == 2.5
+    assert day.api_cost == 0.0
+    assert day.total_input_tokens == 100
+    assert day.total_output_tokens == 100
+    assert len(day.sessions) == 1
+    assert day.sessions[0] is session
+
+
+def test_workflow_subagent_linking(tmp_path):
+    from claude_code_cost_explorer.reader import parse_session_file
+
+    # 1. Create session JSONL file
+    session_jsonl = tmp_path / "session-1.jsonl"
+    session_jsonl.write_text(
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"msg1"}]},"uuid":"u1","parentUuid":null,"timestamp":"2026-06-02T10:00:00.000Z","sessionId":"session-1","cwd":"/tmp","version":"1.0","slug":"session-1"}\n'
+        '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-1","name":"run_workflow","input":{}}],"model":"claude-sonnet-4-6","usage":{"input_tokens":500,"output_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2026-06-02T10:01:00.000Z","sessionId":"session-1"}\n'
+        '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":[{"type":"text","text":"Transcript dir: /tmp/session-1/subagents/workflows/wf_123"}]}]},"uuid":"u2","parentUuid":"a1","timestamp":"2026-06-02T10:02:00.000Z","sessionId":"session-1"}\n'
+        '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"workflow launched"}],"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a2","parentUuid":"u2","timestamp":"2026-06-02T10:03:00.000Z","sessionId":"session-1"}\n'
+    )
+
+    # 2. Create subagents directories and files
+    subagents_dir = tmp_path / "session-1" / "subagents" / "workflows" / "wf_123"
+    subagents_dir.mkdir(parents=True)
+
+    sa_meta = subagents_dir / "agent-wf-sub.meta.json"
+    sa_meta.write_text(
+        '{"description": "Workflow Subagent test", "agentType": "workflow"}'
+    )
+
+    sa_jsonl = subagents_dir / "agent-wf-sub.jsonl"
+    sa_jsonl.write_text(
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"sub_prompt"}]},"uuid":"sa-u1","parentUuid":null,"timestamp":"2026-06-02T10:01:30.000Z"}\n'
+        '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"sub_response"}],"model":"claude-sonnet-4-6","usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"sa-a1","parentUuid":"sa-u1","timestamp":"2026-06-02T10:01:45.000Z"}\n'
+    )
+
+    # 3. Parse session
+    s = parse_session_file(str(session_jsonl), "test-project")
+
+    # 4. Verify results
+    assert s is not None
+    # Unlinked subagents list should be empty since the workflow subagent was linked
+    assert len(s.unlinked_subagents) == 0
+
+    # Check turns
+    assert len(s.turns) == 2
+    turn1 = s.turns[0]
+    turn2 = s.turns[1]
+
+    assert len(turn1.tool_calls) == 0
+    assert len(turn2.tool_calls) == 1
+    tc = turn2.tool_calls[0]
+    assert tc.tool_use_id == "tool-1"
+
+    # Subagents should be associated with tool-1
+    assert len(tc.subagents) == 1
+    sa_data = tc.subagents[0]
+    assert sa_data.agent_id == "wf-sub"
+    assert sa_data.description == "Workflow Subagent test"
+    assert sa_data.agent_type == "workflow"
+
+    # Subagent cost should be correct
+    # Input token: 1000, output token: 200, model: claude-sonnet-4-6 (cost: $3/M input, $15/M output)
+    # Cost = (1000 * 3) / 10^6 + (200 * 15) / 10^6 = 0.003 + 0.003 = 0.006
+    assert abs(sa_data.total_cost - 0.006) < 1e-6
+
+    # Turn 2 cost should include its own cost + subagent's cost
+    # Turn 2 own cost: usage {input_tokens: 100, output_tokens: 50} -> (100*3 + 50*15)/10^6 = 0.0003 + 0.00075 = 0.00105
+    # Turn 2 rolled up cost: 0.00105 + 0.006 = 0.00705
+    assert abs(turn2.cost_usd - 0.00705) < 1e-6
+
+    # Turn 1 cost should be just its own cost
+    # Turn 1 own cost: usage {input_tokens: 500, output_tokens: 100} -> (500*3 + 100*15)/10^6 = 0.003
+    assert abs(turn1.cost_usd - 0.003) < 1e-6
+
+    # Total cost of session should include all costs
+    # Total session cost = Turn 1 cost + Turn 2 cost = 0.003 + 0.00705 = 0.01005
+    assert abs(s.total_cost - 0.01005) < 1e-6
