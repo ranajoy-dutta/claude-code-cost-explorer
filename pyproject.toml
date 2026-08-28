@@ -34,6 +34,9 @@ claude-code-cost-explorer = "claude_code_cost_explorer.app:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.setuptools]
+packages = ["claude_code_cost_explorer"]
+
 [tool.setuptools.package-data]
 "claude_code_cost_explorer" = ["templates/*"]
 

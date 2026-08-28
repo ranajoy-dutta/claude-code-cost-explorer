@@ -427,3 +427,85 @@ def test_workflow_subagent_linking(tmp_path):
     # Total cost of session should include all costs
     # Total session cost = Turn 1 cost + Turn 2 cost = 0.003 + 0.00705 = 0.01005
     assert abs(s.total_cost - 0.01005) < 1e-6
+
+
+def test_build_day_summaries_fork_deduplication(tmp_path):
+    from claude_code_cost_explorer.reader import parse_session_file, build_day_summaries
+
+    # Session 1: Root session with 2 turns
+    s1_file = tmp_path / "session-1.jsonl"
+    s1_file.write_text(
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q1"}]},"uuid":"u1","parentUuid":null,"timestamp":"2026-08-10T10:00:00.000Z","sessionId":"sess-1","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_001","role":"assistant","content":[{"type":"text","text":"a1"}],"model":"claude-sonnet-5","usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2026-08-10T10:00:05.000Z","sessionId":"sess-1","requestId":"req_001"}\n'
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q2"}]},"uuid":"u2","parentUuid":"a1","timestamp":"2026-08-10T10:01:00.000Z","sessionId":"sess-1","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_002","role":"assistant","content":[{"type":"text","text":"a2"}],"model":"claude-sonnet-5","usage":{"input_tokens":1200,"output_tokens":300,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a2","parentUuid":"u2","timestamp":"2026-08-10T10:01:05.000Z","sessionId":"sess-1","requestId":"req_002"}\n'
+    )
+
+    # Session 2: Fork of Session 1 sharing Turn 1 and Turn 2, plus adding Turn 3
+    s2_file = tmp_path / "session-2.jsonl"
+    s2_file.write_text(
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q1"}]},"uuid":"u1","parentUuid":null,"timestamp":"2026-08-10T10:00:00.000Z","sessionId":"sess-2","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_001","role":"assistant","content":[{"type":"text","text":"a1"}],"model":"claude-sonnet-5","usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2026-08-10T10:00:05.000Z","sessionId":"sess-2","requestId":"req_001"}\n'
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q2"}]},"uuid":"u2","parentUuid":"a1","timestamp":"2026-08-10T10:01:00.000Z","sessionId":"sess-2","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_002","role":"assistant","content":[{"type":"text","text":"a2"}],"model":"claude-sonnet-5","usage":{"input_tokens":1200,"output_tokens":300,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a2","parentUuid":"u2","timestamp":"2026-08-10T10:01:05.000Z","sessionId":"sess-2","requestId":"req_002"}\n'
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q3-forked"}]},"uuid":"u3","parentUuid":"a2","timestamp":"2026-08-10T10:05:00.000Z","sessionId":"sess-2","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_003","role":"assistant","content":[{"type":"text","text":"a3-forked"}],"model":"claude-sonnet-5","usage":{"input_tokens":1500,"output_tokens":400,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a3","parentUuid":"u3","timestamp":"2026-08-10T10:05:05.000Z","sessionId":"sess-2","requestId":"req_003"}\n'
+    )
+
+    s1 = parse_session_file(str(s1_file), "test-proj")
+    s2 = parse_session_file(str(s2_file), "test-proj")
+
+    # Both sessions individually have their full turns
+    assert len(s1.turns) == 2
+    assert len(s2.turns) == 3
+
+    # When day summary is built, duplicate messages req_001 and req_002 must only be counted ONCE
+    days = build_day_summaries([s1, s2])
+    assert len(days) == 1
+    day = days[0]
+    assert day.date == "2026-08-10"
+    assert day.session_count == 2
+    # Exactly 3 unique message requests (req_001, req_002, req_003), NOT 5
+    assert day.message_count == 3
+    # Total input tokens: 1000 + 1200 + 1500 = 3700
+    assert day.total_input_tokens == 3700
+    # Total output tokens: 200 + 300 + 400 = 900
+    assert day.total_output_tokens == 900
+
+
+def test_detect_forks(tmp_path):
+    from claude_code_cost_explorer.reader import parse_session_file, detect_forks
+
+    s1_file = tmp_path / "sess-1.jsonl"
+    s1_file.write_text(
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q1"}]},"uuid":"u1","parentUuid":null,"timestamp":"2026-08-10T10:00:00.000Z","sessionId":"sess-1","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_001","role":"assistant","content":[{"type":"text","text":"a1"}],"model":"claude-sonnet-5","usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2026-08-10T10:00:05.000Z","sessionId":"sess-1","requestId":"req_001"}\n'
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q2"}]},"uuid":"u2","parentUuid":"a1","timestamp":"2026-08-10T10:01:00.000Z","sessionId":"sess-1","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_002","role":"assistant","content":[{"type":"text","text":"a2"}],"model":"claude-sonnet-5","usage":{"input_tokens":1200,"output_tokens":300,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a2","parentUuid":"u2","timestamp":"2026-08-10T10:01:05.000Z","sessionId":"sess-1","requestId":"req_002"}\n'
+    )
+
+    s2_file = tmp_path / "sess-2.jsonl"
+    s2_file.write_text(
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q1"}]},"uuid":"u1","parentUuid":null,"timestamp":"2026-08-10T10:00:00.000Z","sessionId":"sess-2","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_001","role":"assistant","content":[{"type":"text","text":"a1"}],"model":"claude-sonnet-5","usage":{"input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a1","parentUuid":"u1","timestamp":"2026-08-10T10:00:05.000Z","sessionId":"sess-2","requestId":"req_001"}\n'
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q2"}]},"uuid":"u2","parentUuid":"a1","timestamp":"2026-08-10T10:01:00.000Z","sessionId":"sess-2","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_002","role":"assistant","content":[{"type":"text","text":"a2"}],"model":"claude-sonnet-5","usage":{"input_tokens":1200,"output_tokens":300,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a2","parentUuid":"u2","timestamp":"2026-08-10T10:01:05.000Z","sessionId":"sess-2","requestId":"req_002"}\n'
+        '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"q3"}]},"uuid":"u3","parentUuid":"a2","timestamp":"2026-08-10T10:05:00.000Z","sessionId":"sess-2","cwd":"/tmp"}\n'
+        '{"type":"assistant","message":{"id":"msg_bdrk_003","role":"assistant","content":[{"type":"text","text":"a3"}],"model":"claude-sonnet-5","usage":{"input_tokens":1500,"output_tokens":400,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"uuid":"a3","parentUuid":"u3","timestamp":"2026-08-10T10:05:05.000Z","sessionId":"sess-2","requestId":"req_003"}\n'
+    )
+
+    s1 = parse_session_file(str(s1_file), "test-proj")
+    s2 = parse_session_file(str(s2_file), "test-proj")
+
+    sessions = detect_forks([s1, s2])
+    res_s1, res_s2 = sessions[0], sessions[1]
+
+    assert res_s1.fork_parent_id is None
+    assert res_s2.fork_parent_id == res_s1.session_id
+    assert res_s2.fork_point_turn_index == 2
+    assert res_s2.fork_new_turns_count == 1
+    assert res_s2.fork_shared_cost > 0
+    assert res_s2.fork_incremental_cost > 0
+    assert res_s2.turns[0].is_forked_turn is True
+    assert res_s2.turns[1].is_forked_turn is True
+    assert res_s2.turns[2].is_forked_turn is False

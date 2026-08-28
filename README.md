@@ -45,10 +45,9 @@ You can also choose a port:
 ccx --port 5051
 ```
 
-To point at a custom projects directory instead of `~/.claude/projects/`:
-
+If you want to view usage for a specific Claude root directory instead of your local `~/.claude/` directory, set `CLAUDE_DIR`:
 ```bash
-CLAUDE_PROJECTS_DIR=/path/to/projects ccx
+CLAUDE_DIR=/path/to/claude_home ccx
 ```
 
 ## Requirements

@@ -1,4 +1,4 @@
-"""Reads and parses ~/.claude/projects JSONL session files."""
+"""Reads and parses ~/.claude JSONL session files (projects, jobs, and tasks)."""
 
 from __future__ import annotations
 import json
@@ -6,10 +6,9 @@ import os
 from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Optional
-from claude_code_cost_explorer.cost import calculate_cost
+from claude_code_cost_explorer.cost import calculate_cost, is_model_known
 
 CLAUDE_DIR = os.path.expanduser(os.environ.get("CLAUDE_DIR", "~/.claude"))
-_PROJECTS_DIR_OVERRIDE = os.environ.get("CLAUDE_PROJECTS_DIR")
 
 
 def _infer_source(message_id: str) -> str:
@@ -53,6 +52,7 @@ class SubagentData:
     timestamp: str = ""
     end_timestamp: str = ""
     source_path: str = ""
+    has_unknown_models: bool = False
 
 
 @dataclass
@@ -75,12 +75,69 @@ class Turn:
     user_prompt: str = ""
     tool_calls: list = field(default_factory=list)  # list[ToolCallInfo]
     user_prompt_full: str = ""  # full untruncated user message text
-    assistant_content: list = field(
-        default_factory=list
-    )  # assistant response content blocks
-    duration_seconds: float = 0.0  # time until next turn (latency)
-    thinking_chars: int = 0  # total chars in thinking blocks
-    source: str = "api"  # 'bedrock' or 'api' based on message.id prefix
+    assistant_content: list = field(default_factory=list)  # list of raw content blocks
+    source: str = "api"  # 'bedrock' or 'api'
+    thinking_chars: int = 0
+    duration_seconds: float = 0.0
+    is_forked_turn: bool = False
+    _reqs: dict = field(
+        default_factory=dict, repr=False
+    )  # stores unique (msg_id, req_id)
+    _adv_usage: dict = field(default_factory=dict, repr=False)
+    _adv_cost: float = 0.0
+
+    def update_usage_from_record(
+        self, msg_id: str, req_id: str, model: str, usage: dict, source: str
+    ) -> None:
+        """Update usage and cost properly deduplicating by msg_id and req_id."""
+        if not msg_id or model == "<synthetic>":
+            return
+        total_toks = sum(
+            usage.get(k, 0)
+            for k in (
+                "input_tokens",
+                "output_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+            )
+        )
+        key = (msg_id, req_id)
+        if key not in self._reqs or total_toks > self._reqs[key][2]:
+            self._reqs[key] = (model, usage, total_toks, source)
+
+        # parse advisors
+        for it in usage.get("iterations") or []:
+            if isinstance(it, dict) and it.get("kind") == "advisor_message":
+                adv_mod = it.get("model", "")
+                adv_u = dict(it.get("usage") or {})
+                if adv_mod and adv_u:
+                    from .cost import calculate_cost
+
+                    self._adv_cost += calculate_cost(adv_mod, adv_u, "api")
+                    for k in (
+                        "input_tokens",
+                        "output_tokens",
+                        "cache_creation_input_tokens",
+                        "cache_read_input_tokens",
+                    ):
+                        self._adv_usage[k] = self._adv_usage.get(k, 0) + adv_u.get(k, 0)
+
+        self.recalculate_totals()
+
+    def recalculate_totals(self) -> None:
+        from .cost import calculate_cost
+
+        self.usage = dict(self._adv_usage)
+        self.cost_usd = self._adv_cost
+        for m, u, _, src in self._reqs.values():
+            self.cost_usd += calculate_cost(m, u, src)
+            for k in (
+                "input_tokens",
+                "output_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+            ):
+                self.usage[k] = self.usage.get(k, 0) + u.get(k, 0)
 
 
 @dataclass
@@ -108,6 +165,13 @@ class SessionData:
     away_summary_events: list = field(default_factory=list)  # list[AwaySummaryEvent]
     ai_title_event: Optional[AiTitleEvent] = None
     unlinked_subagents: list[SubagentData] = field(default_factory=list)
+    has_unknown_models: bool = False
+    fork_parent_id: Optional[str] = None
+    fork_parent_title: Optional[str] = None
+    fork_point_turn_index: int = 0
+    fork_shared_cost: float = 0.0
+    fork_incremental_cost: float = 0.0
+    fork_new_turns_count: int = 0
 
 
 @dataclass
@@ -213,21 +277,77 @@ def _parse_subagent_jsonl(jsonl_path: str, agent_id: str) -> SubagentData:
             if p in _asst_uuid_set:
                 _children_of[p].append(r)
 
-    def _chain_usage(uuid: str) -> dict:
-        r = _records_by_uuid.get(uuid)
-        if not r:
-            return {}
-        u = dict((r.get("message") or {}).get("usage") or {})
-        for child in _children_of.get(uuid, []):
-            child_u = _chain_usage(child["uuid"])
-            for key in (
+    def _tree_usage_and_cost(root_uuid: str) -> tuple[dict, float, str]:
+        descendants = [root_uuid]
+        queue = [root_uuid]
+        while queue:
+            curr = queue.pop(0)
+            for child in _children_of.get(curr, []):
+                queue.append(child["uuid"])
+                descendants.append(child["uuid"])
+
+        reqs = {}
+        adv_cost = 0.0
+        adv_usage = {}
+        primary_source = "api"
+        for d_uuid in descendants:
+            r = _records_by_uuid.get(d_uuid)
+            if not r:
+                continue
+            msg = r.get("message") or {}
+            msg_id = msg.get("id") or r.get("uuid")
+            req_id = r.get("requestId")
+
+            for it in (msg.get("usage") or {}).get("iterations") or []:
+                if isinstance(it, dict) and it.get("kind") == "advisor_message":
+                    adv_mod = it.get("model", "")
+                    adv_u = dict(it.get("usage") or {})
+                    if adv_mod and adv_u:
+                        adv_cost += calculate_cost(adv_mod, adv_u, "api")
+                        for k in (
+                            "input_tokens",
+                            "output_tokens",
+                            "cache_creation_input_tokens",
+                            "cache_read_input_tokens",
+                        ):
+                            adv_usage[k] = adv_usage.get(k, 0) + adv_u.get(k, 0)
+
+            if not msg_id:
+                continue
+            u = dict(msg.get("usage") or {})
+            model = msg.get("model", "")
+            if model == "<synthetic>":
+                continue
+            total_toks = sum(
+                u.get(k, 0)
+                for k in (
+                    "input_tokens",
+                    "output_tokens",
+                    "cache_creation_input_tokens",
+                    "cache_read_input_tokens",
+                )
+            )
+
+            src = _infer_source(msg_id)
+            if d_uuid == root_uuid:
+                primary_source = src
+            key = (msg_id, req_id)
+            if key not in reqs or total_toks > reqs[key][2]:
+                reqs[key] = (model, u, total_toks, src)
+
+        total_u = dict(adv_usage)
+        total_c = adv_cost
+        for m, u, _, src in reqs.values():
+            total_c += calculate_cost(m, u, src)
+            for k in (
                 "input_tokens",
                 "output_tokens",
                 "cache_creation_input_tokens",
                 "cache_read_input_tokens",
             ):
-                u[key] = max(u.get(key, 0), child_u.get(key, 0))
-        return u
+                total_u[k] = total_u.get(k, 0) + u.get(k, 0)
+
+        return total_u, total_c, primary_source
 
     # Compute deduplicated cost/source per root assistant record
     root_costs = {}
@@ -236,6 +356,7 @@ def _parse_subagent_jsonl(jsonl_path: str, agent_id: str) -> SubagentData:
     seen_root_mids: set = set()
     bedrock_cost = 0.0
     api_cost = 0.0
+    has_unknown_models = False
     for r in records:
         if r.get("type") != "assistant":
             continue
@@ -250,18 +371,20 @@ def _parse_subagent_jsonl(jsonl_path: str, agent_id: str) -> SubagentData:
         model = msg.get("model", "")
         if model == "<synthetic>":
             continue
-        usage = _chain_usage(r.get("uuid", ""))
-        cost = calculate_cost(model, usage)
-
+        usage, cost, source = _tree_usage_and_cost(r.get("uuid", ""))
         uuid = r.get("uuid", "")
+
         root_costs[uuid] = cost
-        root_sources[uuid] = _infer_source(msg_id)
+        root_sources[uuid] = source
         root_usages[uuid] = usage
 
-        if root_sources[uuid] == "bedrock":
+        if source == "bedrock":
             bedrock_cost += cost
         else:
             api_cost += cost
+
+        if not is_model_known(model, source):
+            has_unknown_models = True
 
     total_cost = bedrock_cost + api_cost
     source = "bedrock" if bedrock_cost >= api_cost else "api"
@@ -339,6 +462,7 @@ def _parse_subagent_jsonl(jsonl_path: str, agent_id: str) -> SubagentData:
         timestamp=start_timestamp,
         end_timestamp=end_timestamp,
         source_path=jsonl_path,
+        has_unknown_models=has_unknown_models,
     )
 
 
@@ -357,6 +481,12 @@ def _load_subagents(session_jsonl_path: str) -> dict:
                 agent_id = fname[len("agent-") : -len(".jsonl")]
                 full_path = os.path.join(root, fname)
                 result[agent_id] = _parse_subagent_jsonl(full_path, agent_id)
+            elif fname == "journal.jsonl":
+                parent_dir = os.path.basename(root)
+                if parent_dir.startswith("wf_"):
+                    agent_id = parent_dir
+                    full_path = os.path.join(root, fname)
+                    result[agent_id] = _parse_subagent_jsonl(full_path, agent_id)
     return result
 
 
@@ -610,18 +740,13 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
                     parent_turn = _uuid_to_turn[root_uuid]
                     parent_turn.assistant_content.extend(asst_content)
                     # The child record's usage is cumulative for the turn, so take the max
+                    msg_id = (r.get("message", {}) or {}).get(
+                        "id", ""
+                    ) or parent_turn.uuid
+                    req_id = r.get("requestId", "")
                     if usage:
-                        for key in (
-                            "input_tokens",
-                            "output_tokens",
-                            "cache_creation_input_tokens",
-                            "cache_read_input_tokens",
-                        ):
-                            parent_turn.usage[key] = max(
-                                parent_turn.usage.get(key, 0), usage.get(key, 0)
-                            )
-                        parent_turn.cost_usd = calculate_cost(
-                            parent_turn.model, parent_turn.usage
+                        parent_turn.update_usage_from_record(
+                            msg_id, req_id, model, usage, parent_turn.source
                         )
                 # Track this child's parent so grandchildren can find the root
                 _assistant_parent_map[r.get("uuid", "")] = parent_uuid
@@ -632,35 +757,31 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
             # Root assistant record: if we've already seen this message.id as a
             # root (Bedrock sometimes emits the same msg as two fragmented roots),
             # max-merge into the existing turn instead of creating a duplicate.
-            msg_id = (r.get("message", {}) or {}).get("id", "") or ""
+            msg_id = (r.get("message", {}) or {}).get("id", "") or r.get("uuid", "")
+            req_id = r.get("requestId", "")
             existing = _mid_to_turn.get(msg_id) if msg_id else None
             if existing is not None:
-                for key in (
-                    "input_tokens",
-                    "output_tokens",
-                    "cache_creation_input_tokens",
-                    "cache_read_input_tokens",
-                ):
-                    existing.usage[key] = max(
-                        existing.usage.get(key, 0), usage.get(key, 0)
-                    )
-                existing.cost_usd = calculate_cost(existing.model, existing.usage)
+                existing.update_usage_from_record(
+                    msg_id, req_id, model, usage, existing.source
+                )
                 existing.assistant_content.extend(asst_content)
                 _uuid_to_turn[r.get("uuid", "")] = existing
                 _assistant_parent_map[r.get("uuid", "")] = parent_uuid
                 continue
+            turn_source = _infer_source(msg_id)
             turn = Turn(
                 uuid=r.get("uuid", ""),
                 timestamp=r.get("timestamp", ""),
                 model=model,
-                usage=dict(usage),
-                cost_usd=calculate_cost(model, usage),
+                usage={},
+                cost_usd=0.0,
                 user_prompt=last_user_prompt,
                 user_prompt_full=pending_user_prompt_full,
                 tool_calls=pending_tool_calls,
                 assistant_content=asst_content,
-                source=_infer_source(msg_id),
+                source=turn_source,
             )
+            turn.update_usage_from_record(msg_id, req_id, model, usage, turn_source)
             turns.append(turn)
             _uuid_to_turn[r.get("uuid", "")] = turn
             _assistant_parent_map[r.get("uuid", "")] = parent_uuid
@@ -676,17 +797,34 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     if not project_path:
         project_path = fallback_name
 
-    # Roll subagent costs up into the parent turn that invoked them
+    # Roll subagent costs and tokens up into the parent turn that invoked them
     linked_agent_ids: set = set()
     for turn in turns:
         for tc in turn.tool_calls:
-            if tc.subagent and tc.subagent.total_cost > 0:
-                turn.cost_usd += tc.subagent.total_cost
+            if tc.subagent:
+                if tc.subagent.total_cost > 0:
+                    turn.cost_usd += tc.subagent.total_cost
+                for sat in tc.subagent.turns:
+                    for key in (
+                        "input_tokens",
+                        "output_tokens",
+                        "cache_creation_input_tokens",
+                        "cache_read_input_tokens",
+                    ):
+                        turn.usage[key] = turn.usage.get(key, 0) + sat.usage.get(key, 0)
                 linked_agent_ids.add(tc.subagent.agent_id)
             for sa in tc.subagents:
                 if sa.total_cost > 0:
                     turn.cost_usd += sa.total_cost
-                    linked_agent_ids.add(sa.agent_id)
+                for sat in sa.turns:
+                    for key in (
+                        "input_tokens",
+                        "output_tokens",
+                        "cache_creation_input_tokens",
+                        "cache_read_input_tokens",
+                    ):
+                        turn.usage[key] = turn.usage.get(key, 0) + sat.usage.get(key, 0)
+                linked_agent_ids.add(sa.agent_id)
 
     # Add costs of subagents that couldn't be linked to a specific turn via agentId regex
     unlinked_subagents = [
@@ -754,6 +892,17 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
     total_cost = sum(t.cost_usd for t in turns) + unlinked_subagent_cost
     session_source = "bedrock" if bedrock_cost >= api_cost else "api"
 
+    session_has_unknown_models = False
+    for t in turns:
+        if not is_model_known(t.model, t.source):
+            session_has_unknown_models = True
+            break
+    if not session_has_unknown_models:
+        for sa in subagents.values():
+            if sa.has_unknown_models:
+                session_has_unknown_models = True
+                break
+
     return SessionData(
         session_id=session_id,
         source_path=jsonl_path,
@@ -782,35 +931,98 @@ def parse_session_file(jsonl_path: str, project_hint: str) -> Optional[SessionDa
         away_summary_events=away_summary_events_list,
         ai_title_event=AiTitleEvent(ai_title=seen_ai_title) if seen_ai_title else None,
         unlinked_subagents=unlinked_subagents,
+        has_unknown_models=session_has_unknown_models,
     )
 
 
-def load_all_sessions(claude_dir: str = CLAUDE_DIR) -> list[SessionData]:
-    """Scan ~/.claude/projects/ — top-level .jsonl files only (subdirectories are not recursed into)."""
-    if _PROJECTS_DIR_OVERRIDE:
-        projects_dir = os.path.expanduser(_PROJECTS_DIR_OVERRIDE)
-    else:
-        projects_dir = os.path.join(claude_dir, "projects")
-    if not os.path.isdir(projects_dir):
-        return []
-    sessions = []
-    for encoded_name in os.listdir(projects_dir):
-        proj_dir = os.path.join(projects_dir, encoded_name)
-        if not os.path.isdir(proj_dir):
-            continue
-        for entry in os.listdir(proj_dir):
-            full_path = os.path.join(proj_dir, entry)
-            if entry.endswith(".jsonl") and os.path.isfile(full_path):
-                s = parse_session_file(full_path, encoded_name)
-                if s:
-                    sessions.append(s)
+def detect_forks(sessions: list[SessionData]) -> list[SessionData]:
+    """Detect forked sessions in the same project and compute fork metadata."""
+    by_proj: dict[str, list[SessionData]] = {}
+    for s in sessions:
+        by_proj.setdefault(s.project_path, []).append(s)
+
+    for s_list in by_proj.values():
+        s_list_sorted = sorted(s_list, key=lambda s: s.first_timestamp)
+        for i, s2 in enumerate(s_list_sorted):
+            if not s2.turns:
+                continue
+            t2_mids = [
+                list(t._reqs.keys())[0][0] if t._reqs else t.uuid for t in s2.turns
+            ]
+            best_match = None
+            best_common = 0
+            for s1 in s_list_sorted[:i]:
+                if s1.session_id == s2.session_id or not s1.turns:
+                    continue
+                t1_mids = [
+                    list(t._reqs.keys())[0][0] if t._reqs else t.uuid for t in s1.turns
+                ]
+                common = 0
+                for k in range(min(len(t1_mids), len(t2_mids))):
+                    if t1_mids[k] == t2_mids[k]:
+                        common += 1
+                    else:
+                        break
+                if common >= 2 and common > best_common:
+                    best_common = common
+                    best_match = s1
+
+            if best_match:
+                s2.fork_parent_id = best_match.session_id
+                s2.fork_parent_title = best_match.title
+                s2.fork_point_turn_index = best_common
+                s2.fork_shared_cost = sum(t.cost_usd for t in s2.turns[:best_common])
+                s2.fork_incremental_cost = sum(
+                    t.cost_usd for t in s2.turns[best_common:]
+                )
+                s2.fork_new_turns_count = len(s2.turns) - best_common
+                for idx, t in enumerate(s2.turns):
+                    t.is_forked_turn = idx < best_common
+
     return sessions
+
+
+def load_all_sessions(claude_dir: str = CLAUDE_DIR) -> list[SessionData]:
+    """Scan ~/.claude/projects/, as well as ~/.claude/jobs/ and ~/.claude/tasks/."""
+    sessions = []
+
+    projects_dir = os.path.join(claude_dir, "projects")
+    base_dir = claude_dir
+
+    if os.path.isdir(projects_dir):
+        for encoded_name in os.listdir(projects_dir):
+            proj_dir = os.path.join(projects_dir, encoded_name)
+            if not os.path.isdir(proj_dir):
+                continue
+            for entry in os.listdir(proj_dir):
+                full_path = os.path.join(proj_dir, entry)
+                if entry.endswith(".jsonl") and os.path.isfile(full_path):
+                    s = parse_session_file(full_path, encoded_name)
+                    if s:
+                        sessions.append(s)
+
+    for folder in ("jobs", "tasks"):
+        folder_dir = os.path.join(base_dir, folder)
+        if not os.path.isdir(folder_dir):
+            continue
+        for root, _, files in os.walk(folder_dir):
+            for entry in files:
+                if entry.endswith(".jsonl"):
+                    full_path = os.path.join(root, entry)
+                    s = parse_session_file(full_path, f"claude-{folder}")
+                    if s:
+                        sessions.append(s)
+
+    return detect_forks(sessions)
 
 
 def build_day_summaries(
     sessions: list[SessionData], from_date="", to_date=""
 ) -> list[DaySummary]:
     days: dict[str, DaySummary] = {}
+    seen_reqs_by_day: dict[str, set] = {}
+    seen_subagent_turns: dict[str, set] = {}
+
     for s in sessions:
         dates_seen: set = set()
         for turn in s.turns:
@@ -819,19 +1031,74 @@ def build_day_summaries(
                 continue
             if d not in days:
                 days[d] = DaySummary(date=d)
+                seen_reqs_by_day[d] = set()
+                seen_subagent_turns[d] = set()
             day = days[d]
-            day.total_cost += turn.cost_usd
-            if turn.source == "bedrock":
-                day.bedrock_cost += turn.cost_usd
-            else:
-                day.api_cost += turn.cost_usd
-            day.message_count += 1
-            day.total_input_tokens += turn.usage.get("input_tokens", 0)
-            day.total_output_tokens += turn.usage.get("output_tokens", 0)
+
             if d not in dates_seen:
                 dates_seen.add(d)
                 day.session_count += 1
                 day.sessions.append(s)
+
+            # Deduplicate turn requests across sessions
+            if turn._reqs:
+                for req_key, (m, u, _, src) in turn._reqs.items():
+                    if req_key in seen_reqs_by_day[d]:
+                        continue
+                    seen_reqs_by_day[d].add(req_key)
+                    req_cost = calculate_cost(m, u, src)
+                    day.total_cost += req_cost
+                    if src == "bedrock":
+                        day.bedrock_cost += req_cost
+                    else:
+                        day.api_cost += req_cost
+                    day.message_count += 1
+                    day.total_input_tokens += u.get("input_tokens", 0)
+                    day.total_output_tokens += u.get("output_tokens", 0)
+                if turn._adv_cost > 0:
+                    adv_key = (f"adv_{turn.uuid}", "")
+                    if adv_key not in seen_reqs_by_day[d]:
+                        seen_reqs_by_day[d].add(adv_key)
+                        day.total_cost += turn._adv_cost
+                        day.api_cost += turn._adv_cost
+                        for k, v in turn._adv_usage.items():
+                            if k == "input_tokens":
+                                day.total_input_tokens += v
+                            elif k == "output_tokens":
+                                day.total_output_tokens += v
+            else:
+                turn_key = (turn.uuid, "")
+                if turn_key not in seen_reqs_by_day[d]:
+                    seen_reqs_by_day[d].add(turn_key)
+                    day.total_cost += turn.cost_usd
+                    if turn.source == "bedrock":
+                        day.bedrock_cost += turn.cost_usd
+                    else:
+                        day.api_cost += turn.cost_usd
+                    day.message_count += 1
+                    day.total_input_tokens += turn.usage.get("input_tokens", 0)
+                    day.total_output_tokens += turn.usage.get("output_tokens", 0)
+
+            # Deduplicate subagents linked to tool calls across sessions
+            for tc in turn.tool_calls:
+                subagents = []
+                if tc.subagent:
+                    subagents.append(tc.subagent)
+                if tc.subagents:
+                    subagents.extend(tc.subagents)
+                for sa in subagents:
+                    for sat in sa.turns:
+                        sat_key = (sa.agent_id, sat.uuid)
+                        if sat_key in seen_subagent_turns[d]:
+                            continue
+                        seen_subagent_turns[d].add(sat_key)
+                        day.total_cost += sat.cost_usd
+                        if sat.source == "bedrock":
+                            day.bedrock_cost += sat.cost_usd
+                        else:
+                            day.api_cost += sat.cost_usd
+                        day.total_input_tokens += sat.usage.get("input_tokens", 0)
+                        day.total_output_tokens += sat.usage.get("output_tokens", 0)
 
         for sa in s.unlinked_subagents:
             for sat in sa.turns:
@@ -842,6 +1109,12 @@ def build_day_summaries(
                     continue
                 if d not in days:
                     days[d] = DaySummary(date=d)
+                    seen_reqs_by_day[d] = set()
+                    seen_subagent_turns[d] = set()
+                sat_key = (sa.agent_id, sat.uuid)
+                if sat_key in seen_subagent_turns[d]:
+                    continue
+                seen_subagent_turns[d].add(sat_key)
                 day = days[d]
                 day.total_cost += sat.cost_usd
                 if sat.source == "bedrock":
