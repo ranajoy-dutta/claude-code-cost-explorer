@@ -24,8 +24,9 @@ def mock_sessions(monkeypatch):
 @pytest.fixture()
 def client(mock_sessions, monkeypatch):
     import claude_code_cost_explorer.app as flask_app
+    import claude_code_cost_explorer.routes as routes_mod
 
-    monkeypatch.setattr(flask_app, "load_all_sessions", lambda: mock_sessions)
+    monkeypatch.setattr(routes_mod, "load_all_sessions", lambda: mock_sessions)
     flask_app.app.config["TESTING"] = True
     with flask_app.app.test_client() as c:
         yield c
@@ -35,19 +36,23 @@ class TestDayView:
     def test_200(self, client):
         assert client.get("/?from=2025-10-01").status_code == 200
 
-    def test_default_month_filter_matches_30_day_preset(self):
-        from claude_code_cost_explorer.app import _default_date_range
+    def test_default_month_filter_matches_current_month_preset(self):
+        from claude_code_cost_explorer.routes import _default_date_range
 
         assert _default_date_range(date(2025, 11, 30)) == (
             "2025-11-01",
             "2025-11-30",
         )
+        assert _default_date_range(date(2026, 8, 20)) == (
+            "2026-08-01",
+            "2026-08-20",
+        )
 
     def test_redirects_to_default_month_filter(self, client, monkeypatch):
-        import claude_code_cost_explorer.app as flask_app
+        import claude_code_cost_explorer.routes as routes_mod
 
         monkeypatch.setattr(
-            flask_app,
+            routes_mod,
             "_default_date_range",
             lambda: ("2025-10-02", "2025-11-01"),
         )
@@ -58,10 +63,10 @@ class TestDayView:
         assert resp.headers["Location"] == "/?from=2025-10-02&to=2025-11-01"
 
     def test_default_month_filter_preserves_sort_params(self, client, monkeypatch):
-        import claude_code_cost_explorer.app as flask_app
+        import claude_code_cost_explorer.routes as routes_mod
 
         monkeypatch.setattr(
-            flask_app,
+            routes_mod,
             "_default_date_range",
             lambda: ("2025-10-02", "2025-11-01"),
         )
@@ -75,10 +80,10 @@ class TestDayView:
         )
 
     def test_default_month_filter_limits_landing_data(self, client, monkeypatch):
-        import claude_code_cost_explorer.app as flask_app
+        import claude_code_cost_explorer.routes as routes_mod
 
         monkeypatch.setattr(
-            flask_app,
+            routes_mod,
             "_default_date_range",
             lambda: ("2025-10-26", "2025-11-25"),
         )
@@ -186,7 +191,7 @@ class TestSessionDetailView:
             return title
 
         monkeypatch.setattr(
-            "claude_code_cost_explorer.app.append_custom_session_title",
+            "claude_code_cost_explorer.routes.append_custom_session_title",
             fake_append_title,
         )
         resp = client.post(
@@ -201,7 +206,7 @@ class TestSessionDetailView:
 
 class TestBuildExchanges:
     def test_no_compaction_events(self):
-        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.utils import _build_exchanges
         from claude_code_cost_explorer.reader import Turn
 
         turns = [
@@ -227,7 +232,7 @@ class TestBuildExchanges:
         assert result[0]["type"] == "exchange"
 
     def test_compaction_inserted_between_exchanges(self):
-        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.utils import _build_exchanges
         from claude_code_cost_explorer.reader import Turn, CompactionEvent
 
         turns = [
@@ -265,7 +270,7 @@ class TestBuildExchanges:
         assert result[2]["type"] == "exchange"
 
     def test_compaction_before_all_exchanges(self):
-        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.utils import _build_exchanges
         from claude_code_cost_explorer.reader import Turn, CompactionEvent
 
         turns = [
@@ -293,7 +298,7 @@ class TestBuildExchanges:
         assert result[1]["type"] == "exchange"
 
     def test_away_summary_inserted_between_exchanges(self):
-        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.utils import _build_exchanges
         from claude_code_cost_explorer.reader import Turn, AwaySummaryEvent
 
         turns = [
@@ -327,7 +332,7 @@ class TestBuildExchanges:
         assert result[2]["type"] == "exchange"
 
     def test_away_summary_and_compaction_sorted_together(self):
-        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.utils import _build_exchanges
         from claude_code_cost_explorer.reader import (
             Turn,
             CompactionEvent,
@@ -370,7 +375,7 @@ class TestBuildExchanges:
         assert types == ["exchange", "away_summary", "compaction", "exchange"]
 
     def test_away_summary_none_treated_as_empty(self):
-        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.utils import _build_exchanges
         from claude_code_cost_explorer.reader import Turn
 
         turns = [
@@ -388,7 +393,7 @@ class TestBuildExchanges:
         assert result[0]["type"] == "exchange"
 
     def test_unlinked_subagent_inserted_by_timestamp(self):
-        from claude_code_cost_explorer.app import _build_exchanges
+        from claude_code_cost_explorer.utils import _build_exchanges
         from claude_code_cost_explorer.reader import Turn, SubagentData
 
         turns = [
@@ -417,7 +422,7 @@ class TestBuildExchanges:
 
 class TestSettings:
     def test_load_settings_returns_defaults_when_missing(self, tmp_path, monkeypatch):
-        import claude_code_cost_explorer.app as app_mod
+        import claude_code_cost_explorer.settings as app_mod
 
         monkeypatch.setattr(
             app_mod, "_SETTINGS_PATH", str(tmp_path / "ccx_settings.json")
@@ -428,7 +433,7 @@ class TestSettings:
         assert settings == {"low": 1.0, "medium": 5.0, "high": 15.0}
 
     def test_load_settings_reads_file(self, tmp_path, monkeypatch):
-        import claude_code_cost_explorer.app as app_mod
+        import claude_code_cost_explorer.settings as app_mod
 
         settings_file = tmp_path / "ccx_settings.json"
         settings_file.write_text(
@@ -441,7 +446,7 @@ class TestSettings:
         assert settings == {"low": 2.0, "medium": 8.0, "high": 20.0}
 
     def test_load_settings_ignores_malformed_json(self, tmp_path, monkeypatch):
-        import claude_code_cost_explorer.app as app_mod
+        import claude_code_cost_explorer.settings as app_mod
 
         settings_file = tmp_path / "ccx_settings.json"
         settings_file.write_text("not json")
@@ -452,21 +457,21 @@ class TestSettings:
         assert settings == {"low": 1.0, "medium": 5.0, "high": 15.0}
 
     def test_cost_severity_uses_custom_thresholds(self, monkeypatch):
-        import claude_code_cost_explorer.app as app_mod
+        import claude_code_cost_explorer.utils as utils_mod
 
         monkeypatch.setattr(
-            app_mod,
+            utils_mod,
             "_load_settings",
             lambda: {"low": 2.0, "medium": 10.0, "high": 25.0},
         )
-        assert app_mod._cost_severity(1.5) == "cost-low"
-        assert app_mod._cost_severity(5.0) == "cost-med"
-        assert app_mod._cost_severity(15.0) == "cost-high"
-        assert app_mod._cost_severity(30.0) == "cost-critical"
+        assert utils_mod._cost_severity(1.5) == "cost-low"
+        assert utils_mod._cost_severity(5.0) == "cost-med"
+        assert utils_mod._cost_severity(15.0) == "cost-high"
+        assert utils_mod._cost_severity(30.0) == "cost-critical"
 
     def test_post_settings_saves_valid_thresholds(self, client, tmp_path, monkeypatch):
         import json
-        import claude_code_cost_explorer.app as app_mod
+        import claude_code_cost_explorer.settings as app_mod
 
         monkeypatch.setattr(
             app_mod, "_SETTINGS_PATH", str(tmp_path / "ccx_settings.json")
@@ -480,7 +485,7 @@ class TestSettings:
         assert saved["cost_thresholds"] == {"low": 2.0, "medium": 8.0, "high": 20.0}
 
     def test_post_settings_rejects_wrong_order(self, client, monkeypatch, tmp_path):
-        import claude_code_cost_explorer.app as app_mod
+        import claude_code_cost_explorer.settings as app_mod
 
         monkeypatch.setattr(
             app_mod, "_SETTINGS_PATH", str(tmp_path / "ccx_settings.json")
@@ -490,7 +495,7 @@ class TestSettings:
         assert "error" in resp.get_json()
 
     def test_post_settings_rejects_non_positive(self, client, monkeypatch, tmp_path):
-        import claude_code_cost_explorer.app as app_mod
+        import claude_code_cost_explorer.settings as app_mod
 
         monkeypatch.setattr(
             app_mod, "_SETTINGS_PATH", str(tmp_path / "ccx_settings.json")

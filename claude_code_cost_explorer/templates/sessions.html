@@ -67,13 +67,21 @@
       <tr>
         <td>
           <a href="/session/{{ session.session_id }}?from_date={{ date }}">{{ session.title }}</a>
+          {% if session.fork_parent_id %}
+          <span class="ccx-badge ccx-badge--fork" style="margin-left:6px;" title="Forked from {{ session.fork_parent_title or session.fork_parent_id[:8] }} ({{ session.fork_point_turn_index }} shared turns · {{ format_cost(session.fork_shared_cost) }} shared)&#10;+{{ session.fork_new_turns_count }} new turns in this fork (+{{ format_cost(session.fork_incremental_cost) }})">⑂ Fork</span>
+          {% endif %}
           {% if show_source_split %}
           <span class="ccx-badge ccx-badge--source ccx-badge--{{ session.source }}" style="margin-left:6px;" title="{% if session.bedrock_cost %}Bedrock {{ format_cost(session.bedrock_cost) }}{% endif %}{% if session.bedrock_cost and session.api_cost %} · {% endif %}{% if session.api_cost %}API {{ format_cost(session.api_cost) }}{% endif %}">{{ source_label(session.source) }}</span>
           {% endif %}
         </td>
         <td><a href="/session/{{ session.session_id }}" style="color:var(--ccx-text-secondary);" title="{{ session.project_path }}">{{ session.project_name }}</a></td>
         {% set dc = day_costs[session.session_id] %}
-        <td class="ccx-cost {{ cost_severity(dc) }}"><span>{{ format_cost(dc) }}</span><span style="color:var(--ccx-text-muted);font-size:11px;"> / {{ format_cost(session.total_cost) }}</span></td>
+        <td class="ccx-cost {{ cost_severity(dc) }}" {% if session.fork_parent_id %}title="Lifetime shared base: {{ format_cost(session.fork_shared_cost) }}&#10;Lifetime new in this fork: +{{ format_cost(session.fork_incremental_cost) }}"{% endif %}>
+          <span>{{ format_cost(dc) }}</span><span style="color:var(--ccx-text-muted);font-size:11px;"> / {{ format_cost(session.total_cost) }}</span>
+          {% if session.fork_parent_id and session.fork_incremental_cost > 0 %}
+          <div style="font-size: 10px; color: #38BDF8; margin-top: 1px; font-weight: 500;">+{{ format_cost(session.fork_incremental_cost) }} new</div>
+          {% endif %}
+        </td>
         {% if show_source_split %}
         {% set db = day_bedrock[session.session_id] %}
         {% set da = day_api[session.session_id] %}

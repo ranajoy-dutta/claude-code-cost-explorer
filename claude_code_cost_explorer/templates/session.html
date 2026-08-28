@@ -215,8 +215,16 @@ details[open] .ccx-away-bar__chevron {
     {% if session.ai_title_event %}
     · <span class="ccx-aititle-note" title="AI-generated title: &quot;{{ session.ai_title_event.ai_title }}&quot; — LLM call cost not tracked"><span class="ccx-aititle-note__dot"></span>AI title (cost not tracked)</span>
     {% endif %}
-  </div>
 </div>
+
+{% if session.fork_parent_id %}
+<div class="ccx-fork-banner">
+  <span class="ccx-fork-banner__icon">⑂</span>
+  <span class="ccx-fork-banner__text">
+    Forked from <a href="/session/{{ session.fork_parent_id }}">{{ session.fork_parent_title or session.fork_parent_id[:8] }}</a> · Inherited {{ session.fork_point_turn_index }} turns ({{ format_cost(session.fork_shared_cost) }}) · <strong>+{{ session.fork_new_turns_count }} new turns (+{{ format_cost(session.fork_incremental_cost) }})</strong>
+  </span>
+</div>
+{% endif %}
 
 <div class="ccx-metrics">
   <div class="ccx-metric">
@@ -278,6 +286,14 @@ details[open] .ccx-away-bar__chevron {
     </summary>
     <div class="ccx-away-bar__body">{{ ev.content }}</div>
   </details>
+  {% elif ex.type == "fork_point" %}
+  <div class="ccx-fork-bar">
+    <hr class="ccx-fork-bar__line">
+    <span class="ccx-fork-bar__label">
+      <span style="font-size:13px;">⑂</span> Fork Point · New turns in this session begin here (+{{ ex.new_turns }} turn{% if ex.new_turns != 1 %}s{% endif %} · +{{ format_cost(ex.inc_cost) }})
+    </span>
+    <hr class="ccx-fork-bar__line">
+  </div>
   {% elif ex.type == "unlinked_subagent" %}
   {% set sa = ex.subagent %}
   <div class="ccx-exchange" data-date="{{ sa.timestamp[:10] }}">

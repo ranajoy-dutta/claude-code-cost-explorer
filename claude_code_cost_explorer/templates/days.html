@@ -308,7 +308,7 @@
       <button type="button" class="ccx-preset" data-preset="today">Today</button>
       <button type="button" class="ccx-preset" data-preset="yesterday">Yesterday</button>
       <button type="button" class="ccx-preset" data-preset="7d">7d</button>
-      <button type="button" class="ccx-preset" data-preset="30d">30d</button>
+      <button type="button" class="ccx-preset" data-preset="current-month">Current Month</button>
       <button type="button" class="ccx-preset" data-preset="all">All</button>
     </div>
   </div>
@@ -415,11 +415,11 @@
       const today = new Date();
       today.setHours(0,0,0,0);
       switch (key) {
-        case 'today':     return { from: fmtDate(today),              to: fmtDate(today) };
-        case 'yesterday': return { from: fmtDate(offsetDate(today,-1)), to: fmtDate(offsetDate(today,-1)) };
-        case '7d':        return { from: fmtDate(offsetDate(today,-6)), to: fmtDate(today) };
-        case '30d':       return { from: fmtDate(offsetDate(today,-29)),to: fmtDate(today) };
-        case 'all':       return { from: '',                            to: '' };
+        case 'today':         return { from: fmtDate(today),              to: fmtDate(today) };
+        case 'yesterday':     return { from: fmtDate(offsetDate(today,-1)), to: fmtDate(offsetDate(today,-1)) };
+        case '7d':            return { from: fmtDate(offsetDate(today,-6)), to: fmtDate(today) };
+        case 'current-month': return { from: fmtDate(new Date(today.getFullYear(), today.getMonth(), 1)), to: fmtDate(today) };
+        case 'all':           return { from: '',                            to: '' };
         default:          return null;
       }
     }

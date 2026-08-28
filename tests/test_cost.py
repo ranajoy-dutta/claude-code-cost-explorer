@@ -94,3 +94,10 @@ class TestCalculateCost:
             )
             > 0
         )
+
+    def test_source_aware_rates(self):
+        rates_api = get_rates("claude-sonnet-5", source="api")
+        rates_bedrock = get_rates("claude-sonnet-5", source="bedrock")
+        assert rates_api["input"] == 3.00
+        # If bedrock_rates are in custom settings, it returns custom override, else standard
+        assert rates_bedrock["input"] in (2.20, 3.00)

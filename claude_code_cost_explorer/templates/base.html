@@ -329,6 +329,63 @@
       background: var(--ccx-glow);
       border-color: rgba(124, 92, 255, 0.30);
     }
+    .ccx-badge--fork {
+      color: #38BDF8;
+      background: rgba(56, 189, 248, 0.10);
+      border: 1px solid rgba(56, 189, 248, 0.30);
+      cursor: help;
+      font-size: 10px;
+      padding: 1px 6px;
+      gap: 3px;
+    }
+    .ccx-fork-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      background: rgba(56, 189, 248, 0.06);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      border-radius: var(--ccx-radius-lg);
+      font-size: 12px;
+      color: var(--ccx-text);
+    }
+    .ccx-fork-banner__icon {
+      font-size: 15px;
+      color: #38BDF8;
+      flex-shrink: 0;
+    }
+    .ccx-fork-banner a {
+      color: #38BDF8;
+      font-weight: 500;
+      text-decoration: underline;
+    }
+    .ccx-fork-banner a:hover {
+      color: #7DD3FC;
+    }
+    .ccx-fork-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: -20px 0 20px;
+      color: #38BDF8;
+      font-size: 11px;
+    }
+    .ccx-fork-bar__line {
+      flex: 1;
+      border: none;
+      border-top: 1px dashed rgba(56, 189, 248, 0.4);
+    }
+    .ccx-fork-bar__label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #38BDF8;
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
 
     /* Inline source split beside the total-cost metric */
     .ccx-metric__split {
@@ -1664,6 +1721,13 @@
             <span class="ccx-settings-hint" id="ccx-thresh-critical-label">${{ "%.2f"|format(get_cost_thresholds()['high']) }} and above</span>
           </div>
         </div>
+        <div class="ccx-settings-section-label" style="margin-top: 20px;">Advanced Configuration</div>
+        <div class="ccx-settings-block">
+          <div class="ccx-settings-row">
+            <span class="ccx-settings-name" style="flex:1;">Raw JSON Settings (Bedrock rates, etc)</span>
+            <button class="ccx-refresh-btn" id="ccx-settings-edit-json-btn">Edit JSON</button>
+          </div>
+        </div>
         <div class="ccx-settings-error" id="ccx-settings-error"></div>
         <div class="ccx-settings-actions">
           <button class="ccx-refresh-btn" id="ccx-settings-reset">Reset</button>
@@ -1673,7 +1737,35 @@
       </div>
     </div>
   </div>
-  <main class="ccx-main">{% block content %}{% endblock %}</main>
+
+  <!-- JSON Editor modal -->
+  <div class="ccx-settings-modal" id="ccx-json-modal" role="dialog" aria-modal="true" style="z-index: 2000;">
+    <div class="ccx-settings-overlay" id="ccx-json-overlay"></div>
+    <div class="ccx-settings-dialog" style="width: 600px; max-width: 90vw;">
+      <div class="ccx-settings-header">Edit Settings JSON</div>
+      <div class="ccx-settings-body">
+        <textarea id="ccx-json-editor" spellcheck="false" style="width: 100%; height: 300px; font-family: monospace; font-size: 12px; background: var(--ccx-surface); color: var(--ccx-text); border: 1px solid var(--ccx-border); border-radius: 6px; padding: 12px; resize: vertical; box-sizing: border-box;"></textarea>
+        <div class="ccx-settings-error" id="ccx-json-error" style="margin-top: 12px;"></div>
+        <div class="ccx-settings-actions" style="margin-top: 16px;">
+          <button class="ccx-refresh-btn" id="ccx-json-cancel">Cancel</button>
+          <button class="ccx-refresh-btn" id="ccx-json-save" style="color:#fff;background:rgba(124,92,255,0.85);border-color:rgba(124,92,255,0.5);">Save JSON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <main class="ccx-main">
+    {% if has_unknown_models %}
+    <div style="background: rgba(255, 170, 0, 0.15); border: 1px solid rgba(255, 170, 0, 0.3); border-radius: 6px; padding: 12px 16px; margin-bottom: 24px; color: var(--ccx-text); font-size: 13px; display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 18px;">⚠️</span>
+      <div>
+        <strong style="color: var(--ccx-cost-high);">Unknown Models Detected:</strong> One or more local traces used models not defined in the pricing catalog.
+        Their costs are evaluated at $0.00.
+        You must explicitly set their correct rates in <code style="background: var(--ccx-surface); padding: 2px 4px; border-radius: 3px; font-family: monospace; font-size: 11px;">~/.claude/ccx_settings.json</code> to see accurate cost estimations.
+      </div>
+    </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
   <button class="ccx-scroll-bottom" id="ccx-scroll-bottom" title="Scroll to bottom" aria-label="Scroll to bottom">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <line x1="12" y1="5" x2="12" y2="19"/>
@@ -1767,6 +1859,63 @@
       })
       .catch(function() { showError('Network error. Could not save settings.'); });
     });
+
+    var editJsonBtn = document.getElementById('ccx-settings-edit-json-btn');
+    var jsonModal = document.getElementById('ccx-json-modal');
+    var jsonOverlay = document.getElementById('ccx-json-overlay');
+    var jsonCancel = document.getElementById('ccx-json-cancel');
+    var jsonSave = document.getElementById('ccx-json-save');
+    var jsonEditor = document.getElementById('ccx-json-editor');
+    var jsonError = document.getElementById('ccx-json-error');
+
+    function openJsonModal() { jsonModal.classList.add('is-open'); jsonError.classList.remove('is-visible'); }
+    function closeJsonModal() { jsonModal.classList.remove('is-open'); }
+    function showJsonError(msg) { jsonError.textContent = msg; jsonError.classList.add('is-visible'); }
+
+    editJsonBtn.addEventListener('click', function() {
+      fetch('/raw_settings')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          jsonEditor.value = data.raw_json || '';
+          openJsonModal();
+        })
+        .catch(function() {
+          showError('Failed to fetch JSON settings.');
+        });
+    });
+
+    jsonOverlay.addEventListener('click', closeJsonModal);
+    jsonCancel.addEventListener('click', closeJsonModal);
+
+    jsonSave.addEventListener('click', function() {
+      var raw = jsonEditor.value;
+      try {
+        JSON.parse(raw);
+      } catch (e) {
+        showJsonError('Invalid JSON: ' + e.message);
+        return;
+      }
+      jsonError.classList.remove('is-visible');
+
+      fetch('/raw_settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw_json: raw })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          closeJsonModal();
+          location.reload();
+        } else {
+          showJsonError(data.error || 'Failed to save JSON.');
+        }
+      })
+      .catch(function() {
+        showJsonError('Network error. Could not save JSON.');
+      });
+    });
+
   })();
   </script>
 </body>
