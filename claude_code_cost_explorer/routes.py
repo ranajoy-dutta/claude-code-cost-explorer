@@ -267,8 +267,8 @@ def raw_settings_view():
     raw_str = req_data.get("raw_json", "")
     try:
         data = json.loads(raw_str)
-    except json.JSONDecodeError as e:
-        return jsonify({"error": f"Invalid JSON format: {str(e)}"}), 400
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid JSON format"}), 400
 
     # Validate structure
     if not isinstance(data, dict):
